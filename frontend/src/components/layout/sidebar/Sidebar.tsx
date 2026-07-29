@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom"
 import {
   Sidebar as SidebarRoot,
   SidebarHeader,
@@ -14,12 +15,15 @@ import {
 } from "lucide-react"
 import { usePins } from "@/context/usePins"
 import { useCategories } from "@/context/useCategories"
+import { useAuth } from "@/context/AuthContext"
 import { getCategoryIcon } from "@/lib/categoryDisplay"
 import ExploreProgress from "./ExploreProgress"
 import SidebarNavGroup from "./SidebarNavGroup"
 import PinListPanels from "@/components/pins/PinListPanels"
 
 const Sidebar = () => {
+  const navigate = useNavigate()
+  const { user } = useAuth()
   const {
     listPanel,
     setListPanel,
@@ -30,6 +34,14 @@ const Sidebar = () => {
     setIsManagingSaved,
   } = usePins()
   const { categories } = useCategories()
+
+  const requireAuth = (action: () => void) => {
+    if (!user) {
+      navigate("/login")
+      return
+    }
+    action()
+  }
 
   return (
     <SidebarRoot collapsible="icon">
@@ -67,17 +79,17 @@ const Sidebar = () => {
               label: "Saved Places",
               icon: Bookmark,
               onClick: () =>
-                setListPanel(
-                  listPanel?.type === "saved" ? null : { type: "saved" }
+                requireAuth(() =>
+                  setListPanel(
+                    listPanel?.type === "saved" ? null : { type: "saved" }
+                  )
                 ),
               active: listPanel?.type === "saved",
             },
             {
               label: "Save a Place",
               icon: Plus,
-              onClick: () => {
-                setIsManagingSaved(true)
-              },
+              onClick: () => requireAuth(() => setIsManagingSaved(true)),
             },
           ]}
         />
@@ -88,10 +100,12 @@ const Sidebar = () => {
               label: "Recently Visited",
               icon: Clock,
               onClick: () =>
-                setListPanel(
-                  listPanel?.type === "recentlyVisited"
-                    ? null
-                    : { type: "recentlyVisited" }
+                requireAuth(() =>
+                  setListPanel(
+                    listPanel?.type === "recentlyVisited"
+                      ? null
+                      : { type: "recentlyVisited" }
+                  )
                 ),
               active: listPanel?.type === "recentlyVisited",
             },
@@ -107,8 +121,10 @@ const Sidebar = () => {
                   : "Add Pin",
               icon: Plus,
               onClick: () =>
-                setSecondaryPanel(
-                  secondaryPanel?.type === "addPin" ? null : { type: "addPin" }
+                requireAuth(() =>
+                  setSecondaryPanel(
+                    secondaryPanel?.type === "addPin" ? null : { type: "addPin" }
+                  )
                 ),
               active: secondaryPanel?.type === "addPin",
             },
@@ -121,10 +137,12 @@ const Sidebar = () => {
               label: "Settings",
               icon: SettingsIcon,
               onClick: () =>
-                setSecondaryPanel(
-                  secondaryPanel?.type === "settings"
-                    ? null
-                    : { type: "settings" }
+                requireAuth(() =>
+                  setSecondaryPanel(
+                    secondaryPanel?.type === "settings"
+                      ? null
+                      : { type: "settings" }
+                  )
                 ),
               active: secondaryPanel?.type === "settings",
             },

@@ -1,8 +1,12 @@
 import { useRef, useState, useEffect } from "react"
-import Map from "react-map-gl/mapbox"
+import Map, { Source, Layer } from "react-map-gl/mapbox"
 import MapControllers from "@/components/maps/MapControllers"
 import PinsList from "@/components/pins/PinList"
 import { usePins } from "@/context/usePins"
+import { useUnlockDistrict } from "@/hooks/useUnlockDistrict"
+import { useDistrictsGeoJson } from "@/hooks/useDistrictsGeoJson"
+import { Button } from "@/components/ui/button"
+import { MapPin, Loader2 } from "lucide-react"
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 
@@ -11,6 +15,15 @@ export default function MapView() {
   const [zoom, setZoom] = useState(12)
   const { secondaryPanel, setSecondaryPanel, flyToTarget, setFlyToTarget } =
     usePins()
+  const { checkIn, status, result, error } = useUnlockDistrict()
+  const { data: districtsGeoJson, refetch: refetchDistricts } = useDistrictsGeoJson()
+
+  // When a check-in newly unlocks a district, refresh the fog layer so it reveals immediately
+  useEffect(() => {
+    if (result?.unlocked && !result.alreadyUnlocked) {
+      refetchDistricts()
+    }
+  }, [result, refetchDistricts])
 
   useEffect(() => {
     if (!flyToTarget || !mapRef.current) return
@@ -46,21 +59,88 @@ export default function MapView() {
   }
 
   return (
-    <Map
-      ref={mapRef}
-      mapboxAccessToken={MAPBOX_TOKEN}
-      initialViewState={{
-        longitude: 38.7578,
-        latitude: 9.0192,
-        zoom: 12,
-      }}
-      mapStyle="mapbox://styles/mapbox/dark-v11"
-      style={{ width: "100%", height: "100%" }}
-      onZoom={(e) => setZoom(e.viewState.zoom)}
-      onClick={handleMapClick}
-    >
-      <MapControllers mapRef={mapRef} />
-      <PinsList zoom={zoom} />
-    </Map>
+    <div className="relative w-full h-full">
+      <Map
+        ref={mapRef}
+        mapboxAccessToken={MAPBOX_TOKEN}
+        initialViewState={{
+          longitude: 38.7578,
+          latitude: 9.0192,
+          zoom: 12,
+        }}
+        mapStyle="mapbox://styles/mapbox/dark-v11"
+        style={{ width: "100%", height: "100%" }}
+        onZoom={(e) => setZoom(e.viewState.zoom)}
+        onClick={handleMapClick}
+      >
+        {districtsGeoJson && (
+          <Source id="districts" type="geojson" data={districtsGeoJson}>
+            {/* Fog: dark overlay over anything not yet unlocked */}
+            <Layer
+              id="districts-locked-fill"
+              type="fill"
+              filter={["==", ["get", "unlocked"], false]}
+              paint={{
+                "fill-color": "#000000",
+                "fill-opacity": 0.7,
+              }}
+            />
+            {/* Revealed districts: a bright outline so "unlocked" reads clearly */}
+            <Layer
+              id="districts-unlocked-outline"
+              type="line"
+              filter={["==", ["get", "unlocked"], true]}
+              paint={{
+                "line-color": "#22c55e",
+                "line-width": 2,
+              }}
+            />
+          </Source>
+        )}
+
+        <MapControllers mapRef={mapRef} />
+        <PinsList zoom={zoom} />
+      </Map>
+
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2">
+        <Button
+          onClick={checkIn}
+          disabled={status === "loading"}
+          size="lg"
+          className="shadow-lg font-semibold gap-2"
+        >
+          {status === "loading" ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Checking location...
+            </>
+          ) : (
+            <>
+              <MapPin className="h-4 w-4" />
+              Check in here
+            </>
+          )}
+        </Button>
+
+        {result?.unlocked && (
+          <div className="bg-background/90 backdrop-blur border rounded-lg px-4 py-2 shadow-lg">
+            <p className="text-sm font-semibold">
+              {result.alreadyUnlocked ? "Already unlocked: " : "🎉 Unlocked: "}
+              <span className="text-primary">{result.district?.name}</span>
+            </p>
+          </div>
+        )}
+        {result && !result.unlocked && (
+          <div className="bg-background/90 backdrop-blur border rounded-lg px-4 py-2 shadow-lg">
+            <p className="text-sm text-muted-foreground">{result.reason}</p>
+          </div>
+        )}
+        {error && (
+          <div className="bg-destructive/10 border border-destructive/30 rounded-lg px-4 py-2 shadow-lg">
+            <p className="text-sm text-destructive">{error}</p>
+          </div>
+        )}
+      </div>
+    </div>
   )
 }

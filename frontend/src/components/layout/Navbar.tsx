@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import {
@@ -15,6 +16,7 @@ import {
   Dumbbell,
   Building2,
 } from "lucide-react"
+import { useAuth } from "@/context/AuthContext"
 
 const quickFilters = [
   { label: "Anime Conventions", icon: Compass },
@@ -23,17 +25,31 @@ const quickFilters = [
 ]
 
 const Navbar = () => {
+  const navigate = useNavigate()
+  const { user, logout } = useAuth()
+
+  const initials = user
+    ? `${user.firstName[0] ?? ""}${user.lastName[0] ?? ""}`.toUpperCase()
+    : "GQ"
+
+  const handleLogout = async () => {
+    try {
+      await logout()
+      navigate("/login")
+    } catch (err) {
+      console.error("Failed to log out", err)
+    }
+  }
+
   return (
     <div className="flex items-center gap-3 border-b bg-background px-4 py-2.5 pl-[5%]">
       <div className="relative w-full max-w-sm">
         <Search className="absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input placeholder="Search places..." className="pl-8" />
       </div>
-
       <Button variant="outline" size="icon" className="shrink-0">
         <SlidersHorizontal className="h-4 w-4" />
       </Button>
-
       <div className="hidden items-center gap-2 md:flex">
         {quickFilters.map(({ label, icon: Icon }) => (
           <Button key={label} variant="outline" size="sm" className="gap-1.5">
@@ -42,19 +58,21 @@ const Navbar = () => {
           </Button>
         ))}
       </div>
-
       <div className="ml-auto">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Avatar className="h-8 w-8 cursor-pointer">
-              <AvatarFallback>GQ</AvatarFallback>
+              <AvatarFallback>{initials}</AvatarFallback>
             </Avatar>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem>Profile</DropdownMenuItem>
-            <DropdownMenuItem>Settings</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => navigate("/profile")}>
+              Profile
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Log out</DropdownMenuItem>
+            <DropdownMenuItem onClick={handleLogout}>
+              Log out
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

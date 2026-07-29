@@ -1,0 +1,34 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1785237894853,
+      "tag": "0000_vengeful_microchip",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1785301931899,
+      "tag": "0001_whole_proteus",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785308160982,
+      "tag": "0002_wandering_starjammers",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785308715204,
+      "tag": "0003_wooden_firebrand",
+      "breakpoints": true
+    }
+  ]
+}

@@ -17,3 +17,9 @@ export interface Pin {
   imageUrl?: string
   saved?: boolean
 }
+export type UnlockResult = {
+  unlocked: boolean
+  alreadyUnlocked?: boolean
+  reason?: string
+  district?: { id: string; name: string }
+}
