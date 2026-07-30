@@ -6,7 +6,9 @@ import {
   doublePrecision,
   timestamp,
   date,
-  customType
+  integer,
+  customType,
+  AnyPgColumn
 } from "drizzle-orm/pg-core"
 import { relations } from "drizzle-orm"
 
@@ -16,6 +18,8 @@ const multiPolygon = customType<{ data: string }>({
   },
 })
 
+// --- USERS & GUESTS ---
+
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull().unique(),
@@ -23,6 +27,11 @@ export const users = pgTable("users", {
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
   passwordHash: text("password_hash").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+})
+
+export const guests = pgTable("guests", {
+  id: uuid("id").primaryKey().defaultRandom(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 })
 
@@ -35,57 +44,50 @@ export const categories = pgTable("categories", {
   description: text("description").notNull(),
 })
 
-export const countries = pgTable("countries", {
+// --- GEOGRAPHIC HIERARCHY (UNIFIED PLACES) ---
+
+export const places = pgTable("places", {
   id: uuid("id").primaryKey().defaultRandom(),
-  name: text("name").notNull(),
-  shapeId: text("shape_id").notNull().unique(),
-  boundary: multiPolygon("boundary").notNull(),
+  name: text("name").notNull(), // e.g., "Oromia", "Addis Ababa", "Shashemene", "Bole", "Abosto"
+  
+  // 1 = Region/Chartered City | 2 = City/Sub-city | 3 = District/Woreda | 4 = Locality
+  adminLevel: integer("admin_level").notNull(),
+  
+  // 'chartered_city', 'region', 'city', 'sub_city', 'district', 'woreda', 'locality'
+  levelType: text("level_type").notNull(), 
+  
+  // Self-referencing link (e.g., Bole -> Addis Ababa, Abosto -> Shashemene)
+  parentId: uuid("parent_id").references((): AnyPgColumn => places.id, {
+    onDelete: "cascade",
+  }),
+  
+  countryCode: text("country_code").notNull().default("ET"), // ISO code ("ET", "KE", "US")
+  shapeId: text("shape_id").unique(),
+  boundary: multiPolygon("boundary"),
 })
 
-export const regions = pgTable("regions", {
+// --- UNLOCKED PROGRESS ---
+
+export const unlockedPlaces = pgTable("unlocked_places", {
   id: uuid("id").primaryKey().defaultRandom(),
-  countryId: uuid("country_id")
+  placeId: uuid("place_id")
     .notNull()
-    .references(() => countries.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  shapeId: text("shape_id").notNull().unique(),
-  boundary: multiPolygon("boundary").notNull(),
-})
-
-export const districts = pgTable("districts", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  regionId: uuid("region_id")
-    .notNull()
-    .references(() => regions.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  shapeId: text("shape_id").notNull().unique(),
-  boundary: multiPolygon("boundary").notNull(),
-})
-
-export const guests = pgTable("guests", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-})
-
-export const unlockedDistricts = pgTable("unlocked_districts", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  districtId: uuid("district_id")
-    .notNull()
-    .references(() => districts.id, { onDelete: "cascade" }),
+    .references(() => places.id, { onDelete: "cascade" }),
   userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
   guestId: uuid("guest_id").references(() => guests.id, { onDelete: "cascade" }),
   unlockedAt: timestamp("unlocked_at").notNull().defaultNow(),
 })
 
+// --- PINS ---
+
 export const pins = pgTable("pins", {
   id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+  guestId: uuid("guest_id").references(() => guests.id, { onDelete: "cascade" }),
   categoryId: uuid("category_id").references(() => categories.id, {
     onDelete: "set null",
   }),
-  districtId: uuid("district_id").references(() => districts.id, {
+  placeId: uuid("place_id").references(() => places.id, {
     onDelete: "set null",
   }),
   name: text("name").notNull(),
@@ -99,42 +101,32 @@ export const pins = pgTable("pins", {
   saved: boolean("saved").default(false),
 })
 
-// --- Relational query API config (for db.query.x.findFirst/findMany with `with: {...}`) ---
-// These are separate from the FK constraints above: the FKs enforce DB-level integrity,
-// these tell Drizzle's query builder how to perform joins.
+// --- RELATIONS ---
 
-export const unlockedDistrictsRelations = relations(unlockedDistricts, ({ one }) => ({
-  district: one(districts, {
-    fields: [unlockedDistricts.districtId],
-    references: [districts.id],
+export const placesRelations = relations(places, ({ one, many }) => ({
+  // Parent location (e.g., Bole's parent is Addis Ababa)
+  parent: one(places, {
+    fields: [places.parentId],
+    references: [places.id],
+    relationName: "place_hierarchy",
   }),
-  user: one(users, {
-    fields: [unlockedDistricts.userId],
-    references: [users.id],
+  // Child locations (e.g., Addis Ababa's children are Bole, Arada, etc.)
+  children: many(places, {
+    relationName: "place_hierarchy",
   }),
-  guest: one(guests, {
-    fields: [unlockedDistricts.guestId],
-    references: [guests.id],
-  }),
-}))
-
-export const districtsRelations = relations(districts, ({ one, many }) => ({
-  region: one(regions, {
-    fields: [districts.regionId],
-    references: [regions.id],
-  }),
-  unlockedBy: many(unlockedDistricts),
+  unlockedBy: many(unlockedPlaces),
   pins: many(pins),
 }))
 
-export const regionsRelations = relations(regions, ({ one, many }) => ({
-  country: one(countries, {
-    fields: [regions.countryId],
-    references: [countries.id],
-  }),
-  districts: many(districts),
+export const unlockedPlacesRelations = relations(unlockedPlaces, ({ one }) => ({
+  place: one(places, { fields: [unlockedPlaces.placeId], references: [places.id] }),
+  user: one(users, { fields: [unlockedPlaces.userId], references: [users.id] }),
+  guest: one(guests, { fields: [unlockedPlaces.guestId], references: [guests.id] }),
 }))
 
-export const countriesRelations = relations(countries, ({ many }) => ({
-  regions: many(regions),
+export const pinsRelations = relations(pins, ({ one }) => ({
+  user: one(users, { fields: [pins.userId], references: [users.id] }),
+  guest: one(guests, { fields: [pins.guestId], references: [guests.id] }),
+  category: one(categories, { fields: [pins.categoryId], references: [categories.id] }),
+  place: one(places, { fields: [pins.placeId], references: [places.id] }),
 }))

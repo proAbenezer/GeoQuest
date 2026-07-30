@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from "react"
-import Map, { Source, Layer } from "react-map-gl/mapbox"
+import Map, { Source, Layer, Marker } from "react-map-gl/mapbox"
 import MapControllers from "@/components/maps/MapControllers"
 import PinsList from "@/components/pins/PinList"
 import { usePins } from "@/context/usePins"
@@ -11,20 +11,18 @@ import { MapPin, Loader2 } from "lucide-react"
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 
 export default function MapView() {
-  const mapRef = useRef(null)
+  const mapRef = useRef<any>(null)
   const [zoom, setZoom] = useState(12)
   const { secondaryPanel, setSecondaryPanel, flyToTarget, setFlyToTarget } =
     usePins()
-  const { checkIn, status, result, error } = useUnlockDistrict()
+
   const { data: districtsGeoJson, refetch: refetchDistricts } = useDistrictsGeoJson()
 
-  // When a check-in newly unlocks a district, refresh the fog layer so it reveals immediately
-  useEffect(() => {
-    if (result?.unlocked && !result.alreadyUnlocked) {
-      refetchDistricts()
-    }
-  }, [result, refetchDistricts])
+  const { checkIn, status, result, error, currentLocation } = useUnlockDistrict({
+    onSuccess: refetchDistricts,
+  })
 
+  // Handle flyTo targets from pins selection
   useEffect(() => {
     if (!flyToTarget || !mapRef.current) return
     const map = mapRef.current.getMap()
@@ -36,7 +34,7 @@ export default function MapView() {
     setFlyToTarget(null)
   }, [flyToTarget, setFlyToTarget])
 
-  async function handleMapClick(e: MapLayerMouseEvent) {
+  async function handleMapClick(e: any) {
     const { lat, lng } = e.lngLat
     try {
       const response = await fetch(
@@ -73,9 +71,23 @@ export default function MapView() {
         onZoom={(e) => setZoom(e.viewState.zoom)}
         onClick={handleMapClick}
       >
+        {/* Steady location dot */}
+        {currentLocation && (
+          <Marker
+            longitude={currentLocation.longitude}
+            latitude={currentLocation.latitude}
+            anchor="center"
+          >
+            <div className="relative flex items-center justify-center">
+              <span className="absolute inline-flex h-6 w-6 rounded-full bg-emerald-500/30 border border-emerald-400/50" />
+              <div className="relative rounded-full h-4 w-4 bg-emerald-500 border-2 border-white shadow-lg" />
+            </div>
+          </Marker>
+        )}
+
+        {/* District GeoJSON overlay */}
         {districtsGeoJson && (
           <Source id="districts" type="geojson" data={districtsGeoJson}>
-            {/* Fog: dark overlay over anything not yet unlocked */}
             <Layer
               id="districts-locked-fill"
               type="fill"
@@ -85,7 +97,6 @@ export default function MapView() {
                 "fill-opacity": 0.7,
               }}
             />
-            {/* Revealed districts: a bright outline so "unlocked" reads clearly */}
             <Layer
               id="districts-unlocked-outline"
               type="line"
@@ -102,6 +113,7 @@ export default function MapView() {
         <PinsList zoom={zoom} />
       </Map>
 
+      {/* Action panel at the bottom */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2">
         <Button
           onClick={checkIn}

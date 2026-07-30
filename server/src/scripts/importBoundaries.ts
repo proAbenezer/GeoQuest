@@ -1,9 +1,10 @@
 import "dotenv/config"
 import { sql } from "drizzle-orm"
 import { db } from "../db/index.js"
-import { countries, regions, districts } from "../db/schema.js"
+import { places } from "../db/schema.js"
 
-const ISO3 = "ETH" // Ethiopia's ISO 3166-1 alpha-3 code
+const ISO3 = "ETH"
+const COUNTRY_CODE = "ET"
 
 type GBMeta = {
   boundaryID: string
@@ -40,16 +41,6 @@ async function fetchGeoJson(url: string) {
   }
 }
 
-function geometryToJson(geometry: any): string {
-  // PostGIS can parse GeoJSON geometry directly via ST_GeomFromGeoJSON,
-  // so we pass the geometry object as a JSON string.
-  return JSON.stringify(geometry)
-}
-
-// db.execute() return shape differs by driver:
-// - postgres-js resolves to the rows array directly
-// - node-postgres (pg) resolves to a result object with a `.rows` property
-// This helper normalizes both so the rest of the script doesn't care which one we're on.
 function extractRows<T = any>(result: unknown): T[] {
   if (Array.isArray(result)) return result as T[]
   const rows = (result as any)?.rows
@@ -57,39 +48,81 @@ function extractRows<T = any>(result: unknown): T[] {
   throw new Error(`Unexpected db.execute() result shape: ${JSON.stringify(result)?.slice(0, 200)}`)
 }
 
-async function main() {
-  console.log(`Importing boundaries for ${ISO3}...`)
+function getLevelInfo(shapeName: string, level: "ADM0" | "ADM1" | "ADM2") {
+  if (level === "ADM0") {
+    return { adminLevel: 0, levelType: "country" }
+  }
 
-  // ADM0 — Country
+  if (level === "ADM1") {
+    const isCharteredCity = ["addis ababa", "dire dawa"].some((city) =>
+      shapeName.toLowerCase().includes(city)
+    )
+    return {
+      adminLevel: 1,
+      levelType: isCharteredCity ? "chartered_city" : "region",
+    }
+  }
+
+  return { adminLevel: 2, levelType: "district" }
+}
+
+async function main() {
+  console.log(`Importing boundaries into 'places' for ${ISO3}...`)
+
+  // 1. ADM0 — Country Level
   const countryMeta = await fetchBoundaryMeta(ISO3, "ADM0")
   const countryGeo: any = await fetchGeoJson(countryMeta.simplifiedGeometryGeoJSON)
   const countryFeature = countryGeo.features[0]
+  const countryGeoStr = JSON.stringify(countryFeature.geometry)
 
-  const [country] = await db
-    .insert(countries)
+  const [countryPlace] = await db
+    .insert(places)
     .values({
       name: countryFeature.properties.shapeName ?? "Ethiopia",
+      adminLevel: 0,
+      levelType: "country",
+      parentId: null,
+      countryCode: COUNTRY_CODE,
       shapeId: countryFeature.properties.shapeID,
-      boundary: geometryToJson(countryFeature.geometry) as any,
+      boundary: sql`ST_Multi(ST_GeomFromGeoJSON(${countryGeoStr}))` as any,
     })
+    .onConflictDoNothing({ target: places.shapeId })
     .returning()
-  console.log(`Inserted country: ${country.name}`)
 
-  // ADM1 — Regions
+  let countryId = countryPlace?.id
+  if (!countryId) {
+    const existing = await db.query.places.findFirst({
+      where: (places, { eq }) => eq(places.shapeId, countryFeature.properties.shapeID),
+    })
+    countryId = existing!.id
+  }
+  console.log(`✅ Country ready: Ethiopia (Level 0)`)
+
+  // 2. ADM1 — Regions & Chartered Cities
   const regionMeta = await fetchBoundaryMeta(ISO3, "ADM1")
   const regionGeo: any = await fetchGeoJson(regionMeta.simplifiedGeometryGeoJSON)
 
   for (const feature of regionGeo.features) {
-    await db.insert(regions).values({
-      countryId: country.id,
-      name: feature.properties.shapeName,
-      shapeId: feature.properties.shapeID,
-      boundary: geometryToJson(feature.geometry) as any,
-    })
-  }
-  console.log(`Inserted ${regionGeo.features.length} regions`)
+    const geoJsonStr = JSON.stringify(feature.geometry)
+    const shapeName = feature.properties.shapeName
+    const { adminLevel, levelType } = getLevelInfo(shapeName, "ADM1")
 
-  // ADM2 — Districts
+    await db
+      .insert(places)
+      .values({
+        name: shapeName,
+        adminLevel,
+        levelType,
+        parentId: countryId,
+        countryCode: COUNTRY_CODE,
+        shapeId: feature.properties.shapeID,
+        boundary: sql`ST_Multi(ST_GeomFromGeoJSON(${geoJsonStr}))` as any,
+      })
+      .onConflictDoNothing({ target: places.shapeId })
+  }
+  console.log(`✅ Inserted/Verified ${regionGeo.features.length} Level-1 places`)
+
+  // 3. ADM2 — Zones, Sub-cities, and Districts
   const districtMeta = await fetchBoundaryMeta(ISO3, "ADM2")
   const districtGeo: any = await fetchGeoJson(districtMeta.simplifiedGeometryGeoJSON)
 
@@ -97,41 +130,51 @@ async function main() {
   let skippedCount = 0
 
   for (const feature of districtGeo.features) {
-    const geoJsonStr = geometryToJson(feature.geometry)
+    const geoJsonStr = JSON.stringify(feature.geometry)
+    const shapeName = feature.properties.shapeName
 
-    // Find which region contains this district's representative point
     const result = await db.execute(sql`
-      SELECT id FROM regions
-      WHERE ST_Contains(
+      SELECT id, name, level_type FROM places
+      WHERE admin_level = 1
+      AND ST_Contains(
         boundary,
         ST_PointOnSurface(ST_GeomFromGeoJSON(${geoJsonStr}))
       )
       LIMIT 1
     `)
-    const rows = extractRows<{ id: string }>(result)
-    const matchedRegion = rows[0]
+    const rows = extractRows<{ id: string; name: string; level_type: string }>(result)
+    const matchedParent = rows[0]
 
-    if (!matchedRegion) {
-      console.warn(`No parent region found for district: ${feature.properties.shapeName} — skipping`)
+    if (!matchedParent) {
+      console.warn(`⚠️ No Level-1 parent found for: ${shapeName} — skipping`)
       skippedCount++
       continue
     }
 
-    await db.insert(districts).values({
-      regionId: matchedRegion.id,
-      name: feature.properties.shapeName,
-      shapeId: feature.properties.shapeID,
-      boundary: geoJsonStr as any,
-    })
+    const levelType = matchedParent.level_type === "chartered_city" ? "sub_city" : "district"
+
+    await db
+      .insert(places)
+      .values({
+        name: shapeName,
+        adminLevel: 2,
+        levelType,
+        parentId: matchedParent.id,
+        countryCode: COUNTRY_CODE,
+        shapeId: feature.properties.shapeID,
+        boundary: sql`ST_Multi(ST_GeomFromGeoJSON(${geoJsonStr}))` as any,
+      })
+      .onConflictDoNothing({ target: places.shapeId })
+
     insertedCount++
   }
 
-  console.log(`Inserted ${insertedCount} districts, skipped ${skippedCount} (no parent region match)`)
+  console.log(`✅ Processed ${insertedCount} Level-2 places, skipped ${skippedCount}`)
 }
 
 main()
   .then(() => process.exit(0))
   .catch((err) => {
-    console.error(err)
+    console.error("❌ Seed failed:", err)
     process.exit(1)
   })
