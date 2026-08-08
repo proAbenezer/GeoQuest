@@ -5,50 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1785237894853,
-      "tag": "0000_vengeful_microchip",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1785301931899,
-      "tag": "0001_whole_proteus",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1785308160982,
-      "tag": "0002_wandering_starjammers",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1785308715204,
-      "tag": "0003_wooden_firebrand",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1785331092915,
-      "tag": "0004_polite_fenris",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1785331422486,
-      "tag": "0005_nostalgic_black_bolt",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1785332166295,
-      "tag": "0006_talented_sheva_callister",
+      "when": 1786093786700,
+      "tag": "0000_fat_boomerang",
       "breakpoints": true
     }
   ]

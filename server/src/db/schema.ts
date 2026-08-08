@@ -8,9 +8,10 @@ import {
   date,
   integer,
   customType,
+  uniqueIndex,
   AnyPgColumn
 } from "drizzle-orm/pg-core"
-import { relations } from "drizzle-orm"
+import { relations, sql } from "drizzle-orm"
 
 const multiPolygon = customType<{ data: string }>({
   dataType() {
@@ -19,7 +20,6 @@ const multiPolygon = customType<{ data: string }>({
 })
 
 // --- USERS & GUESTS ---
-
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull().unique(),
@@ -45,41 +45,66 @@ export const categories = pgTable("categories", {
 })
 
 // --- GEOGRAPHIC HIERARCHY (UNIFIED PLACES) ---
-
 export const places = pgTable("places", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(), // e.g., "Oromia", "Addis Ababa", "Shashemene", "Bole", "Abosto"
-  
-  // 1 = Region/Chartered City | 2 = City/Sub-city | 3 = District/Woreda | 4 = Locality
+
+  // Depth in the tree, RELATIVE to this country's own data — not a fixed global meaning.
+  // 0 = country root. Beyond that, depth varies per country depending on how many
+  // admin levels geoBoundaries provides (some countries: 2 levels, others: 4+).
+  // Always resolve meaning via levelType + parentId chain, never assume adminLevel
+  // maps to the same real-world thing across two different countries.
   adminLevel: integer("admin_level").notNull(),
-  
-  // 'chartered_city', 'region', 'city', 'sub_city', 'district', 'woreda', 'locality'
-  levelType: text("level_type").notNull(), 
-  
+
+  // 'country', 'chartered_city', 'region', 'city', 'sub_city', 'district', 'woreda', 'locality'
+  levelType: text("level_type").notNull(),
+
   // Self-referencing link (e.g., Bole -> Addis Ababa, Abosto -> Shashemene)
   parentId: uuid("parent_id").references((): AnyPgColumn => places.id, {
     onDelete: "cascade",
   }),
-  
-  countryCode: text("country_code").notNull().default("ET"), // ISO code ("ET", "KE", "US")
+
+  countryCode: text("country_code").notNull(), // ISO code ("ET", "KE", "US")
   shapeId: text("shape_id").unique(),
   boundary: multiPolygon("boundary"),
 })
 
-// --- UNLOCKED PROGRESS ---
-
-export const unlockedPlaces = pgTable("unlocked_places", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  placeId: uuid("place_id")
-    .notNull()
-    .references(() => places.id, { onDelete: "cascade" }),
-  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
-  guestId: uuid("guest_id").references(() => guests.id, { onDelete: "cascade" }),
-  unlockedAt: timestamp("unlocked_at").notNull().defaultNow(),
+// --- COUNTRY FETCH / CACHE STATUS ---
+export const countryFetchStatus = pgTable("country_fetch_status", {
+  countryCode: text("country_code").primaryKey(), // ISO code, e.g. "ET"
+  status: text("status").notNull().default("not_cached"), // not_cached | fetching | cached | failed
+  requestedAt: timestamp("requested_at"),
+  completedAt: timestamp("completed_at"),
+  errorMessage: text("error_message"),
 })
 
-// --- PINS ---
+// --- UNLOCKED PROGRESS ---
+export const unlockedPlaces = pgTable(
+  "unlocked_places",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    placeId: uuid("place_id")
+      .notNull()
+      .references(() => places.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+    guestId: uuid("guest_id").references(() => guests.id, { onDelete: "cascade" }),
+    unlockedAt: timestamp("unlocked_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // Prevents the same registered user from unlocking the same place twice.
+    // Partial unique index: only enforced when userId is set.
+    uniqueUserUnlock: uniqueIndex("unique_user_unlock")
+      .on(table.placeId, table.userId)
+      .where(sql`${table.userId} IS NOT NULL`),
+    // Prevents the same guest from unlocking the same place twice.
+    // Partial unique index: only enforced when guestId is set.
+    uniqueGuestUnlock: uniqueIndex("unique_guest_unlock")
+      .on(table.placeId, table.guestId)
+      .where(sql`${table.guestId} IS NOT NULL`),
+  })
+)
 
+// --- PINS ---
 export const pins = pgTable("pins", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
@@ -102,7 +127,6 @@ export const pins = pgTable("pins", {
 })
 
 // --- RELATIONS ---
-
 export const placesRelations = relations(places, ({ one, many }) => ({
   // Parent location (e.g., Bole's parent is Addis Ababa)
   parent: one(places, {
