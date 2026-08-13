@@ -137,3 +137,16 @@
     @apply font-sans;
   }
 }
+
+
+.recenter-locating span {
+  animation: recenter-spin 1s linear infinite;
+}
+.recenter-centered {
+  background-color: #00b47b !important;
+  color: white;
+}
+@keyframes recenter-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

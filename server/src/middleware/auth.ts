@@ -1,7 +1,10 @@
+// middleware/auth.ts
 import type { Request, Response, NextFunction } from "express"
 import jwt from "jsonwebtoken"
 
 const JWT_SECRET = process.env.JWT_SECRET!
+const GUEST_JWT_SECRET = process.env.GUEST_JWT_SECRET || process.env.JWT_SECRET!
+const GUEST_COOKIE_NAME = "guest_id"
 
 declare global {
   namespace Express {
@@ -38,4 +41,18 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction) {
     // invalid/expired token — treat as logged out, don't block
   }
   next()
+}
+
+// Reads an existing guest identity from the cookie WITHOUT creating a new one.
+// Used only at signup, to check "did this browser already have guest history to reclaim,"
+// since minting a fresh guest here would be pointless — the person is about to become a real user.
+export function readExistingGuestId(req: Request): string | undefined {
+  const token = req.cookies?.[GUEST_COOKIE_NAME]
+  if (!token) return undefined
+  try {
+    const payload = jwt.verify(token, GUEST_JWT_SECRET) as { guestId: string }
+    return payload.guestId
+  } catch {
+    return undefined
+  }
 }

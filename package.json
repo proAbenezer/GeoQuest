@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "@turf/turf": "^7.4.0",
+    "i18n-iso-countries": "^7.14.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.11"
+  }
+}

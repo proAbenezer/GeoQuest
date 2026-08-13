@@ -1,14 +1,16 @@
+// routes/auth.ts
 import { Router } from "express"
 import bcrypt from "bcrypt"
 import jwt from "jsonwebtoken"
 import { z } from "zod"
 import { eq } from "drizzle-orm"
 import { db } from "../db/index.js"
-import { users } from "../db/schema.js"
-import { requireAuth } from "../middleware/auth.js"
+import { users, unlockedPlaces, pins } from "../db/schema.js"
+import { requireAuth, readExistingGuestId } from "../middleware/auth.js"
 
 const router = Router()
 const JWT_SECRET = process.env.JWT_SECRET!
+const GUEST_COOKIE_NAME = "guest_id"
 
 const signupSchema = z.object({
   email: z.string().email(),
@@ -67,6 +69,26 @@ router.post("/signup", async (req, res) => {
       lastName: users.lastName,
     })
 
+  // --- Reclaim guest history, if any ---
+  // We keep guestId on these rows (not nulled out) so guest history stays
+  // visible/auditable — a reclaimed row ends up with BOTH userId and guestId set.
+  const guestId = readExistingGuestId(req)
+  if (guestId) {
+    await db
+      .update(unlockedPlaces)
+      .set({ userId: user.id })
+      .where(eq(unlockedPlaces.guestId, guestId))
+
+    await db
+      .update(pins)
+      .set({ userId: user.id })
+      .where(eq(pins.guestId, guestId))
+
+    // Guest identity is no longer needed as an anonymous session —
+    // the person is authenticated now. Clear the guest cookie.
+    res.clearCookie(GUEST_COOKIE_NAME, cookieOptions)
+  }
+
   const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: "7d" })
   res.cookie("token", token, cookieOptions)
   res.status(201).json({ user })
@@ -109,6 +131,5 @@ router.post("/logout", (_req, res) => {
   res.clearCookie("token", cookieOptions)
   res.status(204).send()
 })
-
 
 export default router
