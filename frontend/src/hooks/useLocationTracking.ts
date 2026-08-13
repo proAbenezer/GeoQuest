@@ -1,56 +1,61 @@
-import { useEffect, useRef, useState } from "react"
-import * as turf from "@turf/turf"
+import { useState, useCallback, useEffect } from "react"
 
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
-const REGEOCODE_DISTANCE_KM = 20 // re-check country only after moving this far
+interface Location {
+  latitude: number
+  longitude: number
+  accuracy?: number
+}
 
-export type TrackingStatus = "idle" | "locating" | "tracking" | "error"
+type TrackingStatus = "idle" | "locating" | "error"
 
 export function useLocationTracking() {
-  const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null)
+  const [location, setLocation] = useState<Location | null>(null)
   const [iso2, setIso2] = useState<string | null>(null)
   const [status, setStatus] = useState<TrackingStatus>("idle")
   const [error, setError] = useState<string | null>(null)
-  const lastGeocodedPoint = useRef<[number, number] | null>(null)
 
-  useEffect(() => {
-    setStatus("locating")
-    const watchId = navigator.geolocation.watchPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords
-        setLocation({ latitude, longitude })
-        setStatus("tracking")
-        setError(null)
-
-        const point: [number, number] = [longitude, latitude]
-        const needsGeocode =
-          !lastGeocodedPoint.current ||
-          turf.distance(turf.point(lastGeocodedPoint.current), turf.point(point), { units: "kilometers" }) >
-            REGEOCODE_DISTANCE_KM
-
-        if (needsGeocode) {
-          lastGeocodedPoint.current = point
-          try {
-            const res = await fetch(
-              `https://api.mapbox.com/search/geocode/v6/reverse?longitude=${longitude}&latitude=${latitude}&access_token=${MAPBOX_TOKEN}`
-            )
-            const data = await res.json()
-            const detected: string | undefined =
-              data.features?.[0]?.properties?.context?.country?.country_code?.toUpperCase()
-            if (detected) setIso2(detected)
-          } catch (err) {
-            console.error("Reverse geocode failed:", err)
-          }
-        }
-      },
-      () => {
-        setStatus("error")
-        setError("Couldn't get your location. Check location permissions.")
-      },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
-    )
-    return () => navigator.geolocation.clearWatch(watchId)
+  const handleLocationUpdate = useCallback((loc: Location) => {
+    setLocation(loc)
+    setError(null)
   }, [])
 
-  return { location, iso2, status, error }
+  const handleStatusChange = useCallback((s: TrackingStatus) => {
+    setStatus(s)
+  }, [])
+
+  const handleError = useCallback((e: GeolocationPositionError | Error) => {
+    setStatus("error")
+    setError(e.message || "Unable to determine location")
+  }, [])
+
+  // Reverse-geocode to country code whenever location changes
+  useEffect(() => {
+    if (!location) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(
+          `https://api.mapbox.com/search/geocode/v6/reverse?longitude=${location.longitude}&latitude=${location.latitude}&types=country&access_token=${import.meta.env.VITE_MAPBOX_TOKEN}`
+        )
+        const data = await res.json()
+        const code = data.features?.[0]?.properties?.context?.country?.country_code
+        if (!cancelled && code) setIso2(code.toUpperCase())
+      } catch (err) {
+        console.error("Country reverse-geocode failed:", err)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [location])
+
+  return {
+    location,
+    iso2,
+    status,
+    error,
+    handleLocationUpdate,
+    handleStatusChange,
+    handleError,
+  }
 }

@@ -1,34 +1,89 @@
-import type { IControl, Map as MapboxMap } from "mapbox-gl"
+import { useEffect, useRef } from "react"
+import mapboxgl from "mapbox-gl"
 
-export class RecenterMapControl implements IControl {
-  private container!: HTMLDivElement
-  private button!: HTMLButtonElement
-  private onClick: () => void
+interface Location {
+  latitude: number
+  longitude: number
+  accuracy?: number
+}
 
-  constructor(onClick: () => void) {
-    this.onClick = onClick
-  }
+interface MapControllersProps {
+  mapRef: React.RefObject<any>
+  onLocationUpdate: (loc: Location) => void
+  onStatusChange: (status: "idle" | "locating" | "error") => void
+  onError: (err: GeolocationPositionError | Error) => void
+  geolocateControlRef: React.MutableRefObject<mapboxgl.GeolocateControl | null>
+}
 
-  onAdd(_map: MapboxMap) {
-    this.container = document.createElement("div")
-    this.container.className = "mapboxgl-ctrl mapboxgl-ctrl-group"
+export default function MapControllers({
+  mapRef,
+  onLocationUpdate,
+  onStatusChange,
+  onError,
+  geolocateControlRef,
+}: MapControllersProps) {
+  const initializedRef = useRef(false)
 
-    this.button = document.createElement("button")
-    this.button.type = "button"
-    this.button.setAttribute("aria-label", "Recenter on my location")
-    this.button.innerHTML = `<span style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;">◎</span>`
-    this.button.addEventListener("click", () => this.onClick())
+  const onLocationUpdateRef = useRef(onLocationUpdate)
+  const onStatusChangeRef = useRef(onStatusChange)
+  const onErrorRef = useRef(onError)
+  useEffect(() => {
+    onLocationUpdateRef.current = onLocationUpdate
+    onStatusChangeRef.current = onStatusChange
+    onErrorRef.current = onError
+  }, [onLocationUpdate, onStatusChange, onError])
 
-    this.container.appendChild(this.button)
-    return this.container
-  }
+  useEffect(() => {
+    const map = mapRef.current?.getMap()
+    if (!map) return
 
-  onRemove() {
-    this.container.parentNode?.removeChild(this.container)
-  }
+    const setupControls = () => {
+      if (initializedRef.current) return
+      initializedRef.current = true
 
-  setState(opts: { locating?: boolean; centered?: boolean }) {
-    this.button.classList.toggle("recenter-locating", !!opts.locating)
-    this.button.classList.toggle("recenter-centered", !!opts.centered)
-  }
+      map.addControl(new mapboxgl.NavigationControl(), "top-right")
+      map.addControl(new mapboxgl.FullscreenControl(), "top-right");(window as any).__debugMap = map
+
+      const geolocateControl = new mapboxgl.GeolocateControl({
+        positionOptions: { enableHighAccuracy: true },
+        trackUserLocation: true,
+        showUserHeading: true,
+        fitBoundsOptions: { maxZoom: 15 },
+      })
+
+      geolocateControl.on("geolocate", (e: GeolocationPosition) => {
+        onLocationUpdateRef.current({
+          latitude: e.coords.latitude,
+          longitude: e.coords.longitude,
+          accuracy: e.coords.accuracy,
+        })
+      })
+      geolocateControl.on("trackuserlocationstart", () => onStatusChangeRef.current("locating"))
+      geolocateControl.on("trackuserlocationend", () => onStatusChangeRef.current("idle"))
+      geolocateControl.on("error", (e: GeolocationPositionError) => onErrorRef.current(e))
+
+      map.addControl(geolocateControl, "top-right")
+      geolocateControlRef.current = geolocateControl
+
+      map.addControl(new mapboxgl.ScaleControl({ unit: "metric" }), "bottom-left")
+
+      // GeolocateControl isn't fully attached in the same tick as addControl —
+      // triggering immediately throws "Geolocate control triggered before added to a map".
+      setTimeout(() => {
+        geolocateControl.trigger()
+      }, 0)
+    }
+
+    if (map.isStyleLoaded()) {
+      setupControls()
+    } else {
+      map.once("load", setupControls)
+    }
+
+    return () => {
+      if (map) map.off("load", setupControls)
+    }
+  }, [mapRef, geolocateControlRef])
+
+  return null
 }

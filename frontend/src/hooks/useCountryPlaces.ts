@@ -35,14 +35,18 @@ export function useCountryPlaces(iso2: string | null) {
       if (cached && !cancelled) {
         setPlaces(cached)
         setStatus("cached")
+        return // trust the local cache — no network call needed
       }
-      // Always re-check the server too — confirms freshness and catches
-      // the very first visit to a country that isn't cached anywhere.
+      // No local cache found (first visit to this country on this device,
+      // or cache was cleared) — hit the server, which handles its own
+      // "already cached in Postgres" short-circuit.
       await refresh()
     }
-    init()
 
-    return () => { cancelled = true }
+    init()
+    return () => {
+      cancelled = true
+    }
   }, [iso2, refresh])
 
   // Poll while the server is actively fetching this country.
