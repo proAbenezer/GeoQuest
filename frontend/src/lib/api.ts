@@ -25,3 +25,8 @@ export async function unlockPlace(placeId: string, latitude: number, longitude: 
   if (!res.ok) throw new Error(data.error ?? "Unlock failed")
   return data.unlock as { placeId: string; alreadyUnlocked?: boolean; unlockedAt?: string }
 }
+export async function fetchUnlockedCountries(): Promise<{ countryCodes: string[] }> {
+  const res = await fetch(`${API_BASE}/places/unlocked-countries`, { credentials: "include" })
+  if (!res.ok) throw new Error(`Failed to fetch unlocked countries: ${res.status}`)
+  return res.json()
+}

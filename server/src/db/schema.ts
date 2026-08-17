@@ -37,9 +37,8 @@ export const guests = pgTable("guests", {
 
 export const categories = pgTable("categories", {
   id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+  guestId: uuid("guest_id").references(() => guests.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   description: text("description").notNull(),
 })
@@ -109,14 +108,12 @@ export const pins = pgTable("pins", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
   guestId: uuid("guest_id").references(() => guests.id, { onDelete: "cascade" }),
-  categoryId: uuid("category_id").references(() => categories.id, {
-    onDelete: "set null",
-  }),
-  placeId: uuid("place_id").references(() => places.id, {
-    onDelete: "set null",
-  }),
+  categoryId: uuid("category_id").references(() => categories.id, { onDelete: "set null" }),
+  placeId: uuid("place_id").references(() => places.id, { onDelete: "set null" }),
   name: text("name").notNull(),
+  customName: text("custom_name"), // user's own personal name for the pin, separate from the official place name
   description: text("description").notNull(),
+  customDescription: text("custom_description"), // user's own notes, separate from any official description
   notes: text("notes"),
   visitDate: date("visit_date"),
   visited: boolean("visited").notNull().default(false),
@@ -124,9 +121,7 @@ export const pins = pgTable("pins", {
   longitude: doublePrecision("longitude").notNull(),
   imageUrl: text("image_url"),
   saved: boolean("saved").default(false),
-})
-
-// --- RELATIONS ---
+})// --- RELATIONS ---
 export const placesRelations = relations(places, ({ one, many }) => ({
   // Parent location (e.g., Bole's parent is Addis Ababa)
   parent: one(places, {

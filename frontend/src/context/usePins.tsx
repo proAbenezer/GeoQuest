@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react"
 import type { Pin } from "@/types"
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000"
 
 type SecondaryPanel =
   | { type: "pinDetail"; pin: Pin }
@@ -41,27 +42,21 @@ type FlyToTarget = {
 interface PinsContextValue {
   pins: Pin[]
   loading: boolean
-
   loadPins: () => Promise<void>
   addPin: (pin: Omit<Pin, "id">) => Promise<Pin>
-
+  updatePin: (id: string, updates: Partial<Pin>) => Promise<Pin>
+  deletePin: (id: string) => Promise<void>
   secondaryPanel: SecondaryPanel
   setSecondaryPanel: (panel: SecondaryPanel) => void
-
   listPanel: ListPanel
   setListPanel: (panel: ListPanel) => void
-
   prefillLocation: PrefillLocation
   setPrefillLocation: (location: PrefillLocation) => void
-
   isManagingSaved: boolean
   setIsManagingSaved: (v: boolean) => void
-
   toggleSaved: (id: string) => Promise<void>
-
   flyToTarget: FlyToTarget
   setFlyToTarget: (target: FlyToTarget) => void
-
   highlightedPinId: string | null
   setHighlightedPinId: (id: string | null) => void
 }
@@ -92,14 +87,11 @@ export function PinsProvider({ children }: { children: ReactNode }) {
 
   async function loadPins() {
     setLoading(true)
-
     try {
-      const response = await fetch("/api/pins", {
+      const response = await fetch(`${API_BASE}/pins`, {
         credentials: "include",
       })
-
       const data = await response.json()
-
       setPins(data.pins)
     } finally {
       setLoading(false)
@@ -111,7 +103,7 @@ export function PinsProvider({ children }: { children: ReactNode }) {
   }, [])
 
   async function addPin(newPin: Omit<Pin, "id">): Promise<Pin> {
-    const response = await fetch("/api/pins", {
+    const response = await fetch(`${API_BASE}/pins`, {
       method: "POST",
       credentials: "include",
       headers: {
@@ -119,24 +111,18 @@ export function PinsProvider({ children }: { children: ReactNode }) {
       },
       body: JSON.stringify(newPin),
     })
-
-    if (!response.ok) {
-      throw new Error("Failed to create pin")
-    }
-
     const data = await response.json()
-
+    if (!response.ok) {
+      throw new Error(data.error ?? "Failed to create pin")
+    }
     setPins((prev) => [...prev, data.pin])
-
     return data.pin
   }
 
   async function toggleSaved(id: string) {
     const pin = pins.find((p) => p.id === id)
-
     if (!pin) return
-
-    const response = await fetch(`/api/pins/${id}`, {
+    const response = await fetch(`${API_BASE}/pins/${id}`, {
       method: "PATCH",
       credentials: "include",
       headers: {
@@ -146,14 +132,40 @@ export function PinsProvider({ children }: { children: ReactNode }) {
         saved: !pin.saved,
       }),
     })
-
     if (!response.ok) return
-
     const data = await response.json()
-
     setPins((prev) =>
       prev.map((p) => (p.id === id ? data.pin : p))
     )
+  }
+
+  async function updatePin(id: string, updates: Partial<Pin>): Promise<Pin> {
+    const response = await fetch(`${API_BASE}/pins/${id}`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(updates),
+    })
+    const data = await response.json()
+    if (!response.ok) {
+      throw new Error(data.error ?? "Failed to update pin")
+    }
+    setPins((prev) => prev.map((p) => (p.id === id ? data.pin : p)))
+    return data.pin
+  }
+
+  async function deletePin(id: string): Promise<void> {
+    const response = await fetch(`${API_BASE}/pins/${id}`, {
+      method: "DELETE",
+      credentials: "include",
+    })
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}))
+      throw new Error(data.error ?? "Failed to delete pin")
+    }
+    setPins((prev) => prev.filter((p) => p.id !== id))
   }
 
   return (
@@ -163,6 +175,8 @@ export function PinsProvider({ children }: { children: ReactNode }) {
         loading,
         loadPins,
         addPin,
+        updatePin,
+        deletePin,
         secondaryPanel,
         setSecondaryPanel,
         listPanel,
@@ -171,11 +185,11 @@ export function PinsProvider({ children }: { children: ReactNode }) {
         setPrefillLocation,
         isManagingSaved,
         setIsManagingSaved,
+        toggleSaved,
         flyToTarget,
         setFlyToTarget,
         highlightedPinId,
         setHighlightedPinId,
-        toggleSaved,
       }}
     >
       {children}

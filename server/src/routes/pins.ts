@@ -11,17 +11,20 @@ const router = Router()
 
 const pinSchema = z.object({
   name: z.string().min(1, "Name is required"),
+  customName: z.string().nullable().optional(),
   description: z.string().min(1, "Description is required"),
+  customDescription: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
   latitude: z.number(),
   longitude: z.number(),
   categoryId: z.string().uuid().nullable().optional(),
-  placeId: z.string().uuid().nullable().optional(),
+  placeId: z.string().uuid(),
   visited: z.boolean().optional(),
   saved: z.boolean().optional(),
   visitDate: z.string().nullable().optional(),
   imageUrl: z.string().nullable().optional(),
 })
+
 const pinUpdateSchema = pinSchema.partial()
 
 // Every route below works for BOTH logged-in users and guests.

@@ -23,10 +23,10 @@ export default function MapControllers({
   geolocateControlRef,
 }: MapControllersProps) {
   const initializedRef = useRef(false)
-
   const onLocationUpdateRef = useRef(onLocationUpdate)
   const onStatusChangeRef = useRef(onStatusChange)
   const onErrorRef = useRef(onError)
+
   useEffect(() => {
     onLocationUpdateRef.current = onLocationUpdate
     onStatusChangeRef.current = onStatusChange
@@ -42,7 +42,7 @@ export default function MapControllers({
       initializedRef.current = true
 
       map.addControl(new mapboxgl.NavigationControl(), "top-right")
-      map.addControl(new mapboxgl.FullscreenControl(), "top-right");(window as any).__debugMap = map
+      map.addControl(new mapboxgl.FullscreenControl(), "top-right")
 
       const geolocateControl = new mapboxgl.GeolocateControl({
         positionOptions: { enableHighAccuracy: true },
@@ -79,7 +79,6 @@ export default function MapControllers({
     } else {
       map.once("load", setupControls)
     }
-
     return () => {
       if (map) map.off("load", setupControls)
     }

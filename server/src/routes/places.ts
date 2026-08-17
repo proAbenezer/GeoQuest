@@ -137,4 +137,14 @@ router.get("/unlocked", async (req, res) => {
   res.json({ unlocked })
 })
 
+router.get("/unlocked-countries", async (req, res) => {
+  const rows = await db
+    .selectDistinct({ countryCode: places.countryCode })
+    .from(unlockedPlaces)
+    .innerJoin(places, eq(unlockedPlaces.placeId, places.id))
+    .where(ownerFilter(req))
+
+  res.json({ countryCodes: rows.map((r) => r.countryCode) })
+})
+
 export default router

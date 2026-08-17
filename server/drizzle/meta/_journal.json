@@ -8,6 +8,20 @@
       "when": 1786093786700,
       "tag": "0000_fat_boomerang",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786954182904,
+      "tag": "0001_good_kingpin",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786964405385,
+      "tag": "0002_broken_mandroid",
+      "breakpoints": true
     }
   ]
 }
