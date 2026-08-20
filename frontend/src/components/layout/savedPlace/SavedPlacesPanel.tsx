@@ -27,6 +27,7 @@ const SavedPlacesPanel = () => {
     setSearchQuery("")
   }
 
+  // Match sidebar width
   const sidebarWidth = state === "expanded" ? "16rem" : "4.5rem"
 
   return (

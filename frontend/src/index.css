@@ -165,6 +165,7 @@
 .pin-image-preview {
   animation: imagePopIn 0.2s ease-out;
 }
+<<<<<<< HEAD
 
 /* ============================================ */
 /* ========== COMPLETE MAP BORDER FIX ========== */
@@ -178,3 +179,7 @@
 .mapboxgl-canvas-container {
   outline: none !important;
 }
+=======
+
+
+>>>>>>> 9e3ce7a (finished setting up the sidebar)
