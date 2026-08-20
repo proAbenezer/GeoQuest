@@ -151,3 +151,33 @@
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+/* index.css or globals.css */
+@keyframes imagePopIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
+}
+
+.pin-image-preview {
+  animation: imagePopIn 0.2s ease-out;
+}
+/* Add to your global styles or tailwind config */
+.group[data-collapsible="icon"] {
+  width: 4rem; /* 64px - adjust as needed */
+}
+/* In your global CSS or tailwind config */
+[data-collapsible="icon"] {
+  width: 4rem !important; /* 64px */
+  min-width: 4rem !important;
+}
+
+/* Adjust the PinListPanels component to hide in collapsed state */
+/* In components/pins/PinListPanels.tsx, wrap the entire component with: */
+<div className="group-data-[collapsible=icon]:hidden">
+  {/* Your existing PinListPanels content */}
+</div>
