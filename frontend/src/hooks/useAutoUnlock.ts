@@ -1,3 +1,4 @@
+// hooks/useAutoUnlock.ts
 import { useEffect, useRef, useState } from "react"
 import * as turf from "@turf/turf"
 import { unlockPlace } from "@/lib/api"
@@ -9,7 +10,7 @@ type UnlockStatus = "idle" | "checking" | "success" | "error"
 type UnlockResult = {
   unlocked: boolean
   alreadyUnlocked?: boolean
-  place?: { id: string; name: string }
+  place?: { id: string; name: string; address?: string; latitude?: number; longitude?: number }
   reason?: string
 }
 
@@ -18,7 +19,14 @@ export function useAutoUnlock(
   places: Place[] | null,
   countryStatus: string | undefined,
   unlockedIds: Set<string>,
-  onUnlocked?: () => void
+  onUnlocked?: () => void,
+  trackVisitedPlace?: (input: {
+    placeId: string
+    name: string
+    address?: string
+    latitude?: number
+    longitude?: number
+  }) => Promise<boolean>  // ✅ Accept trackVisitedPlace as parameter
 ) {
   const [status, setStatus] = useState<UnlockStatus>("idle")
   const [result, setResult] = useState<UnlockResult | null>(null)
@@ -66,18 +74,37 @@ export function useAutoUnlock(
     unlockPlace(match.id, location.latitude, location.longitude)
       .then((unlock) => {
         setStatus("success")
+        const placeData = {
+          id: match.id,
+          name: match.name,
+          address: match.address || match.name,
+          latitude: location.latitude,
+          longitude: location.longitude,
+        }
         setResult({
           unlocked: true,
           alreadyUnlocked: unlock.alreadyUnlocked ?? false,
-          place: { id: match.id, name: match.name },
+          place: placeData,
         })
+        
+        // ✅ Track the visited place when unlocked (if trackVisitedPlace is provided)
+        if (trackVisitedPlace) {
+          trackVisitedPlace({
+            placeId: match.id,
+            name: match.name,
+            address: match.address || match.name,
+            latitude: location.latitude,
+            longitude: location.longitude,
+          })
+        }
+        
         onUnlocked?.()
       })
       .catch((err) => {
         setStatus("error")
         setError(err instanceof Error ? err.message : "Unlock failed")
       })
-  }, [location, places, countryStatus, unlockedIds, onUnlocked])
+  }, [location, places, countryStatus, unlockedIds, onUnlocked, trackVisitedPlace])
 
   return { status, result, error }
 }

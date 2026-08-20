@@ -138,7 +138,7 @@ const PinDetailPanel = () => {
   }, [isEditing, pin?.id])
 
   // ✅ EARLY RETURN AFTER ALL HOOKS
-  if (!secondaryPanel || secondaryPanel.type === "settings") return null
+  if (secondaryPanel?.type !== "pinDetail") return null  
 
   const title = isPinDetail ? pin!.customName || pin!.name : secondaryPanel.placeName
   const category = isPinDetail ? categories.find((c) => c.id === pin!.categoryId) : null
@@ -259,34 +259,48 @@ const PinDetailPanel = () => {
     }
   }
 
+  const sidebarWidth = state === "expanded" ? "16rem" : "4.5rem"
+
   return (
     <div
-    className="fixed inset-y-0 z-40 w-96 overflow-y-auto border-l bg-background shadow-xl transition-[left] duration-200"
-    style={{ 
-      left: state === "expanded" ? "16rem" : "3rem",
-      top: 0,
-      height: "100vh"
-    }}
-  >
-      {/* ✅ HEADER - Custom name big, Official name small */}
-      <div className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur px-6 py-4">
+      className="fixed inset-y-0 z-50 w-96 overflow-y-auto bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-l shadow-xl transition-[left] duration-200"
+      style={{ 
+        left: sidebarWidth,
+        top: 0,
+        height: "100vh"
+      }}
+    >
+      {/* ✅ HEADER - Matches sidebar header style */}
+      <div className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur px-4 py-3">
         <div className="flex items-start justify-between">
           <div className="min-w-0">
             {isPinDetail ? (
               <>
-                <h2 className="text-xl font-bold truncate">
-                  {pin!.customName || pin!.name}
-                </h2>
-                {pin!.customName && (
-                  <p className="mt-0.5 text-sm text-muted-foreground truncate">
-                    {pin!.name}
-                  </p>
-                )}
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
+                    <MapPin className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-semibold truncate leading-tight">
+                      {pin!.customName || pin!.name}
+                    </h2>
+                    {pin!.customName && (
+                      <p className="text-sm text-muted-foreground truncate">
+                        {pin!.name}
+                      </p>
+                    )}
+                  </div>
+                </div>
               </>
             ) : (
-              <h2 className="text-xl font-bold truncate">
-                {secondaryPanel.placeName}
-              </h2>
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
+                  <MapPin className="h-4 w-4" />
+                </div>
+                <h2 className="text-lg font-semibold truncate leading-tight">
+                  {secondaryPanel.placeName}
+                </h2>
+              </div>
             )}
           </div>
           <div className="flex items-center gap-1 shrink-0 ml-4">
@@ -294,14 +308,14 @@ const PinDetailPanel = () => {
               <>
                 <button
                   onClick={startEditing}
-                  className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   aria-label="Edit pin"
                 >
                   <Pencil className="h-4 w-4" />
                 </button>
                 <button
                   onClick={() => setConfirmingDelete(true)}
-                  className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                  className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                   aria-label="Delete pin"
                 >
                   <Trash2 className="h-4 w-4" />
@@ -310,7 +324,7 @@ const PinDetailPanel = () => {
             )}
             <button
               onClick={() => setSecondaryPanel(null)}
-              className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               <X className="h-5 w-5" />
             </button>
@@ -319,7 +333,7 @@ const PinDetailPanel = () => {
       </div>
 
       {isPinDetail && confirmingDelete && (
-        <div className="mx-4 mt-4 rounded-lg border border-destructive/20 bg-destructive/10 p-4">
+        <div className="mx-3 mt-3 rounded-xl border border-destructive/20 bg-destructive/10 p-4">
           <p className="text-sm text-destructive font-medium">Delete this pin? This can't be undone.</p>
           <div className="mt-3 flex gap-2">
             <Button
@@ -343,98 +357,100 @@ const PinDetailPanel = () => {
       )}
 
       {isPinDetail && isEditing ? (
-        <div className="space-y-4 px-6 py-4">
-          {/* Edit form fields... */}
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-              Custom Name
-            </label>
-            <input
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              placeholder={pin!.name}
-            />
-          </div>
+        <div className="space-y-3 px-3 py-4">
+          {/* Edit form fields with card styling */}
+          <div className="rounded-xl border bg-card/50 p-3 space-y-3">
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                Custom Name
+              </label>
+              <input
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder={pin!.name}
+              />
+            </div>
 
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-              Category
-            </label>
-            <select
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-              value={editCategoryId}
-              onChange={(e) => setEditCategoryId(e.target.value)}
-            >
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                Category
+              </label>
+              <select
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                value={editCategoryId}
+                onChange={(e) => setEditCategoryId(e.target.value)}
+              >
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-              Your Notes
-            </label>
-            <textarea
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-              rows={3}
-              value={editDescription}
-              onChange={(e) => setEditDescription(e.target.value)}
-            />
-          </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                Your Notes
+              </label>
+              <textarea
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                rows={3}
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+              />
+            </div>
 
-          {/* Image Upload */}
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-              Image
-            </label>
-            <div className="space-y-2">
-              {editImageUrl ? (
-                <div className="relative rounded-md border overflow-hidden group">
-                  <img
-                    src={editImageUrl}
-                    alt="Pin"
-                    className="w-full h-32 object-cover"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleRemoveImage}
-                    className="absolute top-2 right-2 rounded-full bg-black/50 p-1.5 text-white hover:bg-black/70 transition-colors"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center justify-center rounded-md border-2 border-dashed border-muted-foreground/25 p-4 hover:border-muted-foreground/50 transition-colors">
-                  <label className="flex cursor-pointer flex-col items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                    <Upload className="h-6 w-6" />
-                    <span>Click to upload image</span>
-                    <span className="text-xs">PNG, JPG, GIF up to 5MB</span>
-                    <input
-                      type="file"
-                      className="hidden"
-                      accept="image/*"
-                      onChange={handleImageUpload}
-                      disabled={isImageUploading}
+            {/* Image Upload */}
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                Image
+              </label>
+              <div className="space-y-2">
+                {editImageUrl ? (
+                  <div className="relative rounded-md border overflow-hidden group">
+                    <img
+                      src={editImageUrl}
+                      alt="Pin"
+                      className="w-full h-32 object-cover"
                     />
-                  </label>
-                </div>
-              )}
-              {isImageUploading && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Uploading image...
-                </div>
-              )}
-              {imageUploadError && (
-                <p className="text-sm text-destructive">{imageUploadError}</p>
-              )}
-              {uploadError && (
-                <p className="text-sm text-destructive">{uploadError}</p>
-              )}
+                    <button
+                      type="button"
+                      onClick={handleRemoveImage}
+                      className="absolute top-2 right-2 rounded-full bg-black/50 p-1.5 text-white hover:bg-black/70 transition-colors"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center rounded-md border-2 border-dashed border-muted-foreground/25 p-4 hover:border-muted-foreground/50 transition-colors">
+                    <label className="flex cursor-pointer flex-col items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                      <Upload className="h-6 w-6" />
+                      <span>Click to upload image</span>
+                      <span className="text-xs">PNG, JPG, GIF up to 5MB</span>
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                        disabled={isImageUploading}
+                      />
+                    </label>
+                  </div>
+                )}
+                {isImageUploading && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Uploading image...
+                  </div>
+                )}
+                {imageUploadError && (
+                  <p className="text-sm text-destructive">{imageUploadError}</p>
+                )}
+                {uploadError && (
+                  <p className="text-sm text-destructive">{uploadError}</p>
+                )}
+              </div>
             </div>
           </div>
 
@@ -459,7 +475,7 @@ const PinDetailPanel = () => {
           </div>
         </div>
       ) : isPinDetail ? (
-        <div className="px-6 py-4 space-y-4">
+        <div className="px-3 py-4 space-y-3">
           {/* ✅ IMAGE */}
           <div className="aspect-video w-full rounded-xl overflow-hidden bg-muted">
             {pin!.imageUrl ? (
@@ -477,7 +493,7 @@ const PinDetailPanel = () => {
           </div>
 
           {/* ✅ TAGS - Category and Visited aligned to the right */}
-          <div className="flex items-center justify-end gap-2 -mt-1">
+          <div className="flex items-center justify-end gap-2">
             <div className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary">
               {(() => {
                 const CategoryIcon = getCategoryIcon(pin!.categoryId)
@@ -494,9 +510,9 @@ const PinDetailPanel = () => {
           </div>
 
           {/* ✅ SECTION 1: YOUR INFORMATION */}
-          <div className="rounded-xl border bg-card/50 p-4 space-y-3">
+          <div className="rounded-xl border bg-card/50 p-3 space-y-2">
             <div className="flex items-center gap-2 text-muted-foreground">
-              <User className="h-4 w-4" />
+              <User className="h-3.5 w-3.5" />
               <h3 className="text-xs font-semibold uppercase tracking-wider">Your Information</h3>
             </div>
             
@@ -543,9 +559,9 @@ const PinDetailPanel = () => {
           </div>
 
           {/* ✅ SECTION 2: MAP INFORMATION */}
-          <div className="rounded-xl border bg-card/50 p-4 space-y-3">
+          <div className="rounded-xl border bg-card/50 p-3 space-y-2">
             <div className="flex items-center gap-2 text-muted-foreground">
-              <Map className="h-4 w-4" />
+              <Map className="h-3.5 w-3.5" />
               <h3 className="text-xs font-semibold uppercase tracking-wider">Map Information</h3>
             </div>
             
@@ -599,12 +615,12 @@ const PinDetailPanel = () => {
           </div>
 
           {/* ✅ SECTION 3: WEATHER */}
-          <div className="rounded-xl border bg-card/50 p-4">
+          <div className="rounded-xl border bg-card/50 p-3 space-y-2">
             <div className="flex items-center gap-2 text-muted-foreground">
-              <CloudSun className="h-4 w-4" />
+              <CloudSun className="h-3.5 w-3.5" />
               <h3 className="text-xs font-semibold uppercase tracking-wider">Weather</h3>
             </div>
-            <div className="mt-2 pl-5">
+            <div className="pl-5">
               {weather ? (
                 <div className="flex items-center gap-3">
                   <span className="text-2xl font-bold">
@@ -624,14 +640,14 @@ const PinDetailPanel = () => {
         </div>
       ) : (
         // Preview mode (not pinned yet)
-        <div className="px-6 py-4 space-y-4">
+        <div className="px-3 py-4 space-y-3">
           <div className="flex flex-wrap gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-sm font-medium text-muted-foreground">
               <MapPin className="h-4 w-4" />
               Not yet pinned
             </span>
           </div>
-          <div className="rounded-xl border bg-card/50 p-4">
+          <div className="rounded-xl border bg-card/50 p-3">
             <h3 className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Address
             </h3>

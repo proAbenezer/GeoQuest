@@ -17,14 +17,13 @@ const App = () => {
           <Route path="/signup" element={<Signup />} />
           <Route element={<AppLayout />}>
             <Route path="/" element={<MapPage />} />
-
+            <Route path="/profile" element={<ProfilePage />} />
             <Route element={<ProtectedRoute />}>
               <Route path="/stats" element={<StatsPage />} />
             </Route>
           </Route>
 
           <Route element={<ProtectedRoute />}>
-            <Route path="/profile" element={<ProfilePage />} />
           </Route>
         </Routes>
       </BrowserRouter>

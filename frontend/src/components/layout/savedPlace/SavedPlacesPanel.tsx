@@ -7,16 +7,11 @@ import { Input } from "@/components/ui/input"
 
 const SavedPlacesPanel = () => {
   const { state } = useSidebar()
-  const { pins, toggleSaved, secondaryPanel, setSecondaryPanel } = usePins()
+  const { pins, toggleSaved, secondaryPanel, setSecondaryPanel } = usePins()  // ✅ Changed from isManagingSaved
   const [searchQuery, setSearchQuery] = useState("")
 
-  // ✅ Check if saved places panel is open via secondaryPanel
-  const isOpen = secondaryPanel?.type === "savedPlaces"
-  
-  // Debug log to see if it's working
-  console.log("SavedPlacesPanel - isOpen:", isOpen, "secondaryPanel:", secondaryPanel)
-
-  if (!isOpen) return null
+  // ✅ Check secondaryPanel instead of isManagingSaved
+  if (secondaryPanel?.type !== "savedPlaces") return null
 
   const savedPins = pins.filter((p) => p.saved)
   const unsavedPins = pins.filter((p) => !p.saved)
@@ -28,10 +23,11 @@ const SavedPlacesPanel = () => {
     : unsavedPins
 
   const handleClose = () => {
-    setSecondaryPanel(null)
+    setSecondaryPanel(null)  // ✅ Use setSecondaryPanel instead of setIsManagingSaved
     setSearchQuery("")
   }
 
+  // Match sidebar width
   const sidebarWidth = state === "expanded" ? "16rem" : "4.5rem"
 
   return (

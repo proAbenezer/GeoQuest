@@ -6,6 +6,7 @@ import pinsRouter from "./routes/pins.ts"
 import placesRouter from "./routes/places.ts"
 import categoriesRoutes from "./routes/categories.ts"
 import uploadsRouter from "./routes/uploads.ts"
+import recentlyVisitedRoutes from "./routes/recently-visited.ts"
 
 const app = express()
 
@@ -24,5 +25,6 @@ app.use("/pins", pinsRouter)
 app.use("/places", placesRouter)
 app.use("/categories", categoriesRoutes)
 app.use("/uploads", uploadsRouter)
+app.use("/recently-visited", recentlyVisitedRoutes)
 
 export default app

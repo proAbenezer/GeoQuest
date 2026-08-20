@@ -1,3 +1,4 @@
+// components/pins/LocationPreview.tsx
 import { MapPin } from "lucide-react"
 import type { SelectedLocation } from "@/types/location"
 

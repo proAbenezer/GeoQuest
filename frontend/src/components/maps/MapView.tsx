@@ -1,4 +1,5 @@
-import { useRef, useState, useMemo } from "react"
+// components/maps/MapView.tsx
+import { useRef, useState, useMemo, useEffect } from "react"
 import Map from "react-map-gl/mapbox"
 import mapboxgl from "mapbox-gl"
 import MapControllers from "@/components/maps/MapControllers"
@@ -7,6 +8,8 @@ import PlacesLayers from "@/components/maps/PlacesLayers"
 import WorldOverlayLayer from "@/components/maps/WorldOverlayLayer"
 import UnlockStatusBanner from "@/components/maps/UnlockStatusBanner"
 import { usePins } from "@/context/usePins"
+import { usePanelManager } from "@/hooks/usePanelManager"
+import { useRecentlyVisited } from "@/hooks/useRecentlyVisited"
 import { useLocationTracking } from "@/hooks/useLocationTracking"
 import { useAutoUnlock } from "@/hooks/useAutoUnlock"
 import { useVisitedCountriesPlaces } from "@/hooks/useVisitedCountriesPlaces"
@@ -21,6 +24,10 @@ export default function MapView() {
   const geolocateControlRef = useRef<mapboxgl.GeolocateControl | null>(null)
   const [zoom, setZoom] = useState(12)
   const { secondaryPanel, setSecondaryPanel, flyToTarget, setFlyToTarget } = usePins()
+  const { openPreview } = usePanelManager()
+  
+  // ✅ Move useRecentlyVisited to component level (NOT inside conditional)
+  const { trackVisitedPlace } = useRecentlyVisited()
 
   const {
     location,
@@ -39,13 +46,24 @@ export default function MapView() {
   const { places: allPlaces, visitedIso2, currentCountryStatus } = useVisitedCountriesPlaces(iso2, unlocked)
 
   const unlockedIds = useMemo(() => new Set(unlocked.map((u) => u.placeId)), [unlocked])
+  
+  // ✅ Pass trackVisitedPlace to useAutoUnlock
   const { result, error: unlockError } = useAutoUnlock(
     location,
     allPlaces,
     currentCountryStatus,
     unlockedIds,
-    refetchUnlocked
+    refetchUnlocked,
+    trackVisitedPlace  // ✅ Pass the tracking function
   )
+
+  // ✅ Track when a place is unlocked (via the result from useAutoUnlock)
+  useEffect(() => {
+    if (result?.unlocked && !result.alreadyUnlocked && result?.place) {
+      // The tracking is already done inside useAutoUnlock, so this is just for additional logic
+      console.log('Place unlocked:', result.place.name)
+    }
+  }, [result])
 
   useMemo(() => {
     if (!flyToTarget || !mapRef.current) return
@@ -63,10 +81,24 @@ export default function MapView() {
       const data = await response.json()
       const feature = data.features?.[0]
       if (!feature) return
-      setSecondaryPanel({
-        type: "preview",
-        placeName: feature.properties.name,
-        address: feature.properties.full_address ?? feature.properties.place_formatted,
+
+      // ✅ Track this place as visited (when user clicks on map)
+      const placeId = feature.properties.mapbox_id || feature.id || `place_${Date.now()}`
+      const placeName = feature.properties.name || "Unknown Place"
+      const placeAddress = feature.properties.full_address || feature.properties.place_formatted || placeName
+
+      trackVisitedPlace({
+        placeId: placeId,
+        name: placeName,
+        address: placeAddress,
+        latitude: lat,
+        longitude: lng,
+      })
+
+      // Use panel manager to open preview - this will close any other panel first
+      openPreview({
+        placeName: placeName,
+        address: placeAddress,
         lat,
         lng,
       })

@@ -1,3 +1,4 @@
+// context/usePins.tsx
 import {
   createContext,
   useContext,
@@ -18,7 +19,8 @@ type SecondaryPanel =
       lng: number
     }
   | { type: "settings" }
-  | { type: "addPin" }
+  | { type: "addPin"; recentlyVisitedId?: string }  // ✅ Added recentlyVisitedId
+  | { type: "savedPlaces" }
   | null
 
 type ListPanel =
@@ -52,8 +54,6 @@ interface PinsContextValue {
   setListPanel: (panel: ListPanel) => void
   prefillLocation: PrefillLocation
   setPrefillLocation: (location: PrefillLocation) => void
-  isManagingSaved: boolean
-  setIsManagingSaved: (v: boolean) => void
   toggleSaved: (id: string) => Promise<void>
   flyToTarget: FlyToTarget
   setFlyToTarget: (target: FlyToTarget) => void
@@ -75,9 +75,6 @@ export function PinsProvider({ children }: { children: ReactNode }) {
 
   const [prefillLocation, setPrefillLocation] =
     useState<PrefillLocation>(null)
-
-  const [isManagingSaved, setIsManagingSaved] =
-    useState(false)
 
   const [flyToTarget, setFlyToTarget] =
     useState<FlyToTarget>(null)
@@ -183,8 +180,6 @@ export function PinsProvider({ children }: { children: ReactNode }) {
         setListPanel,
         prefillLocation,
         setPrefillLocation,
-        isManagingSaved,
-        setIsManagingSaved,
         toggleSaved,
         flyToTarget,
         setFlyToTarget,

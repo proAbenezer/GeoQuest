@@ -1,3 +1,4 @@
+// db/schema.ts
 import {
   pgTable,
   uuid,
@@ -46,32 +47,21 @@ export const categories = pgTable("categories", {
 // --- GEOGRAPHIC HIERARCHY (UNIFIED PLACES) ---
 export const places = pgTable("places", {
   id: uuid("id").primaryKey().defaultRandom(),
-  name: text("name").notNull(), // e.g., "Oromia", "Addis Ababa", "Shashemene", "Bole", "Abosto"
-
-  // Depth in the tree, RELATIVE to this country's own data — not a fixed global meaning.
-  // 0 = country root. Beyond that, depth varies per country depending on how many
-  // admin levels geoBoundaries provides (some countries: 2 levels, others: 4+).
-  // Always resolve meaning via levelType + parentId chain, never assume adminLevel
-  // maps to the same real-world thing across two different countries.
+  name: text("name").notNull(),
   adminLevel: integer("admin_level").notNull(),
-
-  // 'country', 'chartered_city', 'region', 'city', 'sub_city', 'district', 'woreda', 'locality'
   levelType: text("level_type").notNull(),
-
-  // Self-referencing link (e.g., Bole -> Addis Ababa, Abosto -> Shashemene)
   parentId: uuid("parent_id").references((): AnyPgColumn => places.id, {
     onDelete: "cascade",
   }),
-
-  countryCode: text("country_code").notNull(), // ISO code ("ET", "KE", "US")
+  countryCode: text("country_code").notNull(),
   shapeId: text("shape_id").unique(),
   boundary: multiPolygon("boundary"),
 })
 
 // --- COUNTRY FETCH / CACHE STATUS ---
 export const countryFetchStatus = pgTable("country_fetch_status", {
-  countryCode: text("country_code").primaryKey(), // ISO code, e.g. "ET"
-  status: text("status").notNull().default("not_cached"), // not_cached | fetching | cached | failed
+  countryCode: text("country_code").primaryKey(),
+  status: text("status").notNull().default("not_cached"),
   requestedAt: timestamp("requested_at"),
   completedAt: timestamp("completed_at"),
   errorMessage: text("error_message"),
@@ -88,15 +78,14 @@ export const unlockedPlaces = pgTable(
     userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
     guestId: uuid("guest_id").references(() => guests.id, { onDelete: "cascade" }),
     unlockedAt: timestamp("unlocked_at").notNull().defaultNow(),
+    lastAccessedAt: timestamp("last_accessed_at").notNull().defaultNow(),
+    isPinned: boolean("is_pinned").default(false),
+    pinId: uuid("pin_id").references(() => pins.id, { onDelete: "set null" }),
   },
   (table) => ({
-    // Prevents the same registered user from unlocking the same place twice.
-    // Partial unique index: only enforced when userId is set.
     uniqueUserUnlock: uniqueIndex("unique_user_unlock")
       .on(table.placeId, table.userId)
       .where(sql`${table.userId} IS NOT NULL`),
-    // Prevents the same guest from unlocking the same place twice.
-    // Partial unique index: only enforced when guestId is set.
     uniqueGuestUnlock: uniqueIndex("unique_guest_unlock")
       .on(table.placeId, table.guestId)
       .where(sql`${table.guestId} IS NOT NULL`),
@@ -111,9 +100,9 @@ export const pins = pgTable("pins", {
   categoryId: uuid("category_id").references(() => categories.id, { onDelete: "set null" }),
   placeId: uuid("place_id").references(() => places.id, { onDelete: "set null" }),
   name: text("name").notNull(),
-  customName: text("custom_name"), // user's own personal name for the pin, separate from the official place name
+  customName: text("custom_name"),
   description: text("description").notNull(),
-  customDescription: text("custom_description"), // user's own notes, separate from any official description
+  customDescription: text("custom_description"),
   notes: text("notes"),
   visitDate: date("visit_date"),
   visited: boolean("visited").notNull().default(false),
@@ -121,26 +110,64 @@ export const pins = pgTable("pins", {
   longitude: doublePrecision("longitude").notNull(),
   imageUrl: text("image_url"),
   saved: boolean("saved").default(false),
-})// --- RELATIONS ---
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+})
+
+// --- RECENTLY VISITED ---
+export const recentlyVisited = pgTable(
+  "recently_visited",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+    guestId: uuid("guest_id").references(() => guests.id, { onDelete: "cascade" }),
+    placeId: uuid("place_id")
+      .notNull()
+      .references(() => places.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    address: text("address"),
+    latitude: doublePrecision("latitude"),
+    longitude: doublePrecision("longitude"),
+    firstVisitedAt: timestamp("first_visited_at").notNull().defaultNow(),
+    lastAccessedAt: timestamp("last_accessed_at").notNull().defaultNow(),
+    isPinned: boolean("is_pinned").default(false),
+    pinId: uuid("pin_id").references(() => pins.id, { onDelete: "set null" }),
+    visitCount: integer("visit_count").default(1),
+    autoTracked: boolean("auto_tracked").default(true),
+  },
+  (table) => ({
+    uniqueUserPlace: uniqueIndex("unique_user_place")
+      .on(table.placeId, table.userId)
+      .where(sql`${table.userId} IS NOT NULL`),
+    uniqueGuestPlace: uniqueIndex("unique_guest_place")
+      .on(table.placeId, table.guestId)
+      .where(sql`${table.guestId} IS NOT NULL`),
+  })
+)
+
+// ============================================
+// RELATIONS
+// ============================================
+
 export const placesRelations = relations(places, ({ one, many }) => ({
-  // Parent location (e.g., Bole's parent is Addis Ababa)
   parent: one(places, {
     fields: [places.parentId],
     references: [places.id],
     relationName: "place_hierarchy",
   }),
-  // Child locations (e.g., Addis Ababa's children are Bole, Arada, etc.)
   children: many(places, {
     relationName: "place_hierarchy",
   }),
   unlockedBy: many(unlockedPlaces),
   pins: many(pins),
+  recentlyVisited: many(recentlyVisited),
 }))
 
 export const unlockedPlacesRelations = relations(unlockedPlaces, ({ one }) => ({
   place: one(places, { fields: [unlockedPlaces.placeId], references: [places.id] }),
   user: one(users, { fields: [unlockedPlaces.userId], references: [users.id] }),
   guest: one(guests, { fields: [unlockedPlaces.guestId], references: [guests.id] }),
+  pin: one(pins, { fields: [unlockedPlaces.pinId], references: [pins.id] }),
 }))
 
 export const pinsRelations = relations(pins, ({ one }) => ({
@@ -148,4 +175,41 @@ export const pinsRelations = relations(pins, ({ one }) => ({
   guest: one(guests, { fields: [pins.guestId], references: [guests.id] }),
   category: one(categories, { fields: [pins.categoryId], references: [categories.id] }),
   place: one(places, { fields: [pins.placeId], references: [places.id] }),
+}))
+
+export const categoriesRelations = relations(categories, ({ many }) => ({
+  pins: many(pins),
+}))
+
+export const usersRelations = relations(users, ({ many }) => ({
+  categories: many(categories),
+  unlockedPlaces: many(unlockedPlaces),
+  pins: many(pins),
+  recentlyVisited: many(recentlyVisited),
+}))
+
+export const guestsRelations = relations(guests, ({ many }) => ({
+  categories: many(categories),
+  unlockedPlaces: many(unlockedPlaces),
+  pins: many(pins),
+  recentlyVisited: many(recentlyVisited),
+}))
+
+export const recentlyVisitedRelations = relations(recentlyVisited, ({ one }) => ({
+  user: one(users, {
+    fields: [recentlyVisited.userId],
+    references: [users.id],
+  }),
+  guest: one(guests, {
+    fields: [recentlyVisited.guestId],
+    references: [guests.id],
+  }),
+  place: one(places, {
+    fields: [recentlyVisited.placeId],
+    references: [places.id],
+  }),
+  pin: one(pins, {
+    fields: [recentlyVisited.pinId],
+    references: [pins.id],
+  }),
 }))
