@@ -138,9 +138,8 @@
   }
 }
 
-
 .recenter-map-control.recenter-centered .recenter-icon {
-  color: #1d9bf0; /* or your accent color */
+  color: #1d9bf0;
 }
 
 .recenter-map-control.recenter-locating .recenter-icon svg {
@@ -151,7 +150,7 @@
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
-/* index.css or globals.css */
+
 @keyframes imagePopIn {
   from {
     opacity: 0;
@@ -167,4 +166,15 @@
   animation: imagePopIn 0.2s ease-out;
 }
 
+/* ============================================ */
+/* ========== COMPLETE MAP BORDER FIX ========== */
+/* ============================================ */
+/* This is the key fix - target the canvas element directly */
+.mapboxgl-canvas {
+  outline: none !important;
+}
 
+/* Also remove any outline from the container to be safe */
+.mapboxgl-canvas-container {
+  outline: none !important;
+}

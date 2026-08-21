@@ -5,7 +5,6 @@ import mapboxgl from "mapbox-gl"
 import MapControllers from "@/components/maps/MapControllers"
 import PinsList from "@/components/pins/PinList"
 import PlacesLayers from "@/components/maps/PlacesLayers"
-import WorldOverlayLayer from "@/components/maps/WorldOverlayLayer"
 import UnlockStatusBanner from "@/components/maps/UnlockStatusBanner"
 import { usePins } from "@/context/usePins"
 import { usePanelManager } from "@/hooks/usePanelManager"
@@ -26,7 +25,6 @@ export default function MapView() {
   const { secondaryPanel, setSecondaryPanel, flyToTarget, setFlyToTarget } = usePins()
   const { openPreview } = usePanelManager()
   
-  // ✅ Move useRecentlyVisited to component level (NOT inside conditional)
   const { trackVisitedPlace } = useRecentlyVisited()
 
   const {
@@ -39,28 +37,23 @@ export default function MapView() {
     handleError,
   } = useLocationTracking()
 
-  // unlocked must be declared BEFORE useVisitedCountriesPlaces, since that
-  // hook needs it to compute which countries have real unlock progress.
   const { unlocked, refetch: refetchUnlocked } = useUnlockedPlaces()
 
   const { places: allPlaces, visitedIso2, currentCountryStatus } = useVisitedCountriesPlaces(iso2, unlocked)
 
   const unlockedIds = useMemo(() => new Set(unlocked.map((u) => u.placeId)), [unlocked])
   
-  // ✅ Pass trackVisitedPlace to useAutoUnlock
   const { result, error: unlockError } = useAutoUnlock(
     location,
     allPlaces,
     currentCountryStatus,
     unlockedIds,
     refetchUnlocked,
-    trackVisitedPlace  // ✅ Pass the tracking function
+    trackVisitedPlace
   )
 
-  // ✅ Track when a place is unlocked (via the result from useAutoUnlock)
   useEffect(() => {
     if (result?.unlocked && !result.alreadyUnlocked && result?.place) {
-      // The tracking is already done inside useAutoUnlock, so this is just for additional logic
       console.log('Place unlocked:', result.place.name)
     }
   }, [result])
@@ -82,7 +75,6 @@ export default function MapView() {
       const feature = data.features?.[0]
       if (!feature) return
 
-      // ✅ Track this place as visited (when user clicks on map)
       const placeId = feature.properties.mapbox_id || feature.id || `place_${Date.now()}`
       const placeName = feature.properties.name || "Unknown Place"
       const placeAddress = feature.properties.full_address || feature.properties.place_formatted || placeName
@@ -95,7 +87,6 @@ export default function MapView() {
         longitude: lng,
       })
 
-      // Use panel manager to open preview - this will close any other panel first
       openPreview({
         placeName: placeName,
         address: placeAddress,
@@ -112,6 +103,24 @@ export default function MapView() {
     return placesToGeoJson(allPlaces, unlocked)
   }, [allPlaces, unlocked])
 
+  // Force remove borders after map loads
+  useEffect(() => {
+    const removeBorders = () => {
+      document.querySelectorAll('.mapboxgl-map, .mapboxgl-canvas-container, .mapboxgl-canvas, .map-wrapper, .map-container')
+        .forEach(el => {
+          el.style.border = 'none';
+          el.style.outline = 'none';
+          el.style.boxShadow = 'none';
+          el.style.borderStyle = 'none';
+          el.style.borderWidth = '0';
+        });
+    };
+    
+    removeBorders();
+    setTimeout(removeBorders, 500);
+    setTimeout(removeBorders, 1000);
+  }, []);
+
   return (
     <div className="relative w-full h-full">
       <Map
@@ -123,7 +132,6 @@ export default function MapView() {
         onZoom={(e) => setZoom(e.viewState.zoom)}
         onClick={handleMapClick}
       >
-        <WorldOverlayLayer visitedIso2={visitedIso2} />
         {geojson && <PlacesLayers geojson={geojson} />}
         <MapControllers
           mapRef={mapRef}
