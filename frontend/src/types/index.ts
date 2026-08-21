@@ -1,3 +1,4 @@
+
 export interface Category {
   id: string
   name: string
@@ -21,11 +22,10 @@ export interface Pin {
   imageUrl?: string
   saved?: boolean
   placeId: string
+  // NEW: country code (ISO2) for the locked/unlocked logic
+  countryCode?: string   // e.g., "US", "GB", "FR"
 }
 
-export type UnlockResult = {
-  unlocked: boolean
-  alreadyUnlocked?: boolean
-  reason?: string
-  district?: { id: string; name: string }
-}
+// Optional: if you use a separate type for temporary POIs from Mapbox
+// you can export it from here if needed, but it's internal to usePins.
+// We'll keep it inside usePins.tsx for now.

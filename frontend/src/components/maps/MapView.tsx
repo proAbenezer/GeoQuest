@@ -58,12 +58,12 @@ export default function MapView() {
     }
   }, [result])
 
-  useMemo(() => {
-    if (!flyToTarget || !mapRef.current) return
-    const map = mapRef.current.getMap()
-    map.flyTo({ center: [flyToTarget.longitude, flyToTarget.latitude], zoom: 15, duration: 1200 })
-    setFlyToTarget(null)
-  }, [flyToTarget, setFlyToTarget])
+  useEffect(() => {
+  if (!flyToTarget || !mapRef.current) return
+  const map = mapRef.current.getMap()
+  map.flyTo({ center: [flyToTarget.longitude, flyToTarget.latitude], zoom: 15, duration: 1200 })
+  setFlyToTarget(null)
+}, [flyToTarget, setFlyToTarget]) 
 
   async function handleMapClick(e: any) {
     const { lat, lng } = e.lngLat

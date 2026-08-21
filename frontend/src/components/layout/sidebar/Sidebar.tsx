@@ -39,9 +39,8 @@ const Sidebar = () => {
   } = usePins()
   const { categories } = useCategories()
   const { items: recentlyVisitedItems, loading: recentlyVisitedLoading } = useRecentlyVisited()
-  const { collapsed } = useSidebar()
-
-  // Icon + title for the pin list panel header
+const { state } = useSidebar()
+const collapsed = state === "collapsed"  // Icon + title for the pin list panel header
   let PanelIcon = MapPin
   let panelTitle = ""
   if (listPanel?.type === "categoryList") {
