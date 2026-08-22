@@ -3,6 +3,7 @@ export interface Category {
   id: string
   name: string
   description: string
+  mapboxCategory?: string
 }
 
 export interface Pin {

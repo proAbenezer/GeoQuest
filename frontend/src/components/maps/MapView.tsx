@@ -1,8 +1,8 @@
 // components/maps/MapView.tsx
-import { useRef, useState, useMemo, useEffect } from "react"
 import Map from "react-map-gl/mapbox"
 import mapboxgl from "mapbox-gl"
 import MapControllers from "@/components/maps/MapControllers"
+import { useRef, useState, useMemo, useEffect, useCallback } from "react"
 import PinsList from "@/components/pins/PinList"
 import PlacesLayers from "@/components/maps/PlacesLayers"
 import UnlockStatusBanner from "@/components/maps/UnlockStatusBanner"
@@ -22,7 +22,7 @@ export default function MapView() {
   const mapRef = useRef<any>(null)
   const geolocateControlRef = useRef<mapboxgl.GeolocateControl | null>(null)
   const [zoom, setZoom] = useState(12)
-  const { secondaryPanel, setSecondaryPanel, flyToTarget, setFlyToTarget } = usePins()
+  const { secondaryPanel, setSecondaryPanel, flyToTarget, setFlyToTarget, setMapBounds } = usePins()
   const { openPreview } = usePanelManager()
   
   const { trackVisitedPlace } = useRecentlyVisited()
@@ -59,11 +59,19 @@ export default function MapView() {
   }, [result])
 
   useEffect(() => {
-  if (!flyToTarget || !mapRef.current) return
-  const map = mapRef.current.getMap()
-  map.flyTo({ center: [flyToTarget.longitude, flyToTarget.latitude], zoom: 15, duration: 1200 })
-  setFlyToTarget(null)
-}, [flyToTarget, setFlyToTarget]) 
+    if (!flyToTarget || !mapRef.current) return
+    const map = mapRef.current.getMap()
+    map.flyTo({ center: [flyToTarget.longitude, flyToTarget.latitude], zoom: 15, duration: 1200 })
+    setFlyToTarget(null)
+  }, [flyToTarget, setFlyToTarget])
+
+  // ---- NEW: update map bounds on load and move ----
+  const updateBounds = useCallback(() => {
+    if (!mapRef.current) return
+    const map = mapRef.current.getMap()
+    const b = map.getBounds()
+    setMapBounds([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()])
+  }, [setMapBounds])
 
   async function handleMapClick(e: any) {
     const { lat, lng } = e.lngLat
@@ -131,6 +139,8 @@ export default function MapView() {
         style={{ width: "100%", height: "100%" }}
         onZoom={(e) => setZoom(e.viewState.zoom)}
         onClick={handleMapClick}
+        onLoad={updateBounds}
+        onMoveEnd={updateBounds}
       >
         {geojson && <PlacesLayers geojson={geojson} />}
         <MapControllers

@@ -33,10 +33,12 @@ type PrefillLocation = {
   address: string
   latitude: number
   longitude: number
-  categoryId?: string  // now we expect categoryId
+  categoryId?: string
 } | null
 
 type FlyToTarget = { latitude: number; longitude: number } | null
+
+type PinVisibility = "all" | "pinned" | "unpinned"
 
 interface TemporaryPoi {
   id: string
@@ -44,7 +46,7 @@ interface TemporaryPoi {
   address: string
   lat: number
   lng: number
-  categoryName: string  // store the category name for later mapping
+  categoryName: string // Mapbox category name (e.g., "gym")
   countryCode?: string
 }
 
@@ -68,16 +70,20 @@ interface PinsContextValue {
   highlightedPinId: string | null
   setHighlightedPinId: (id: string | null) => void
 
-  // NEW filter properties – using category ID
-  activeCategoryId: string | null
-  setActiveCategoryId: (categoryId: string | null) => void
+  // NEW filter properties – multi‑select + viewport aware
+  activeCategoryIds: string[]
+  toggleCategoryFilter: (categoryId: string) => void
   filteredPins: Pin[]
   temporaryPois: TemporaryPoi[]
   setTemporaryPois: (pois: TemporaryPoi[]) => void
-  fetchNearbyPois: (categoryName: string, bounds: [number, number, number, number]) => Promise<void>
+  fetchNearbyPois: (mapboxCategories: string[], bounds: [number, number, number, number]) => Promise<void>
   clearFilter: () => void
   mapBounds: [number, number, number, number] | null
   setMapBounds: (bounds: [number, number, number, number] | null) => void
+
+  // NEW visibility mode
+  pinVisibility: PinVisibility
+  setPinVisibility: (mode: PinVisibility) => void
 }
 
 const PinsContext = createContext<PinsContextValue | undefined>(undefined)
@@ -92,16 +98,50 @@ export function PinsProvider({ children }: { children: ReactNode }) {
   const [flyToTarget, setFlyToTarget] = useState<FlyToTarget>(null)
   const [highlightedPinId, setHighlightedPinId] = useState<string | null>(null)
 
-  // ---- NEW filter state – now using category ID ----
-  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null)
+  // ---- NEW filter state – multi‑select + viewport ----
+  const [activeCategoryIds, setActiveCategoryIds] = useState<string[]>([])
   const [temporaryPois, setTemporaryPois] = useState<TemporaryPoi[]>([])
   const [mapBounds, setMapBounds] = useState<[number, number, number, number] | null>(null)
 
-  // ---- Derived filtered pins (by categoryId) ----
+  // ---- NEW visibility mode ----
+  const [pinVisibility, setPinVisibility] = useState<PinVisibility>("all")
+  
+
+  // ---- Helper: check if coordinate is inside bounds ----
+  const isInBounds = useCallback(
+    (lat: number, lng: number, bounds: [number, number, number, number] | null) => {
+      if (!bounds) return true
+      const [minLng, minLat, maxLng, maxLat] = bounds
+      return lng >= minLng && lng <= maxLng && lat >= minLat && lat <= maxLat
+    },
+    []
+  )
+
+  // ---- Toggle category filter ----
+  const toggleCategoryFilter = useCallback((categoryId: string) => {
+    setActiveCategoryIds((prev) =>
+      prev.includes(categoryId)
+        ? prev.filter((id) => id !== categoryId)
+        : [...prev, categoryId]
+    )
+  }, [])
+
+  // ---- Clear all filters ----
+  const clearFilter = useCallback(() => {
+    setActiveCategoryIds([])
+    setTemporaryPois([])
+    // Optionally reset visibility to 'all' when clearing? I'll leave it as is.
+  }, [])
+
+  // ---- Derived filtered pins: OR‑match across selected categories + viewport ----
   const filteredPins = useMemo(() => {
-    if (!activeCategoryId) return pins
-    return pins.filter(pin => pin.categoryId === activeCategoryId)
-  }, [pins, activeCategoryId])
+    if (activeCategoryIds.length === 0) return pins
+    return pins.filter(
+      (pin) =>
+        activeCategoryIds.includes(pin.categoryId) &&
+        isInBounds(pin.latitude, pin.longitude, mapBounds)
+    )
+  }, [pins, activeCategoryIds, mapBounds, isInBounds])
 
   // ---- Load pins ----
   async function loadPins() {
@@ -129,9 +169,9 @@ export function PinsProvider({ children }: { children: ReactNode }) {
     })
     const data = await response.json()
     if (!response.ok) throw new Error(data.error ?? "Failed to create pin")
-    setPins(prev => [...prev, data.pin])
+    setPins((prev) => [...prev, data.pin])
     // Remove from temporary POIs if it was one
-    setTemporaryPois(prev => prev.filter(p => p.id !== data.pin.id))
+    setTemporaryPois((prev) => prev.filter((p) => p.id !== data.pin.id))
     return data.pin
   }
 
@@ -144,7 +184,7 @@ export function PinsProvider({ children }: { children: ReactNode }) {
     })
     const data = await response.json()
     if (!response.ok) throw new Error(data.error ?? "Failed to update pin")
-    setPins(prev => prev.map(p => (p.id === id ? data.pin : p)))
+    setPins((prev) => prev.map((p) => (p.id === id ? data.pin : p)))
     return data.pin
   }
 
@@ -157,11 +197,11 @@ export function PinsProvider({ children }: { children: ReactNode }) {
       const data = await response.json().catch(() => ({}))
       throw new Error(data.error ?? "Failed to delete pin")
     }
-    setPins(prev => prev.filter(p => p.id !== id))
+    setPins((prev) => prev.filter((p) => p.id !== id))
   }
 
   async function toggleSaved(id: string) {
-    const pin = pins.find(p => p.id === id)
+    const pin = pins.find((p) => p.id === id)
     if (!pin) return
     const response = await fetch(`${API_BASE}/pins/${id}`, {
       method: "PATCH",
@@ -171,56 +211,55 @@ export function PinsProvider({ children }: { children: ReactNode }) {
     })
     if (!response.ok) return
     const data = await response.json()
-    setPins(prev => prev.map(p => (p.id === id ? data.pin : p)))
+    setPins((prev) => prev.map((p) => (p.id === id ? data.pin : p)))
   }
 
   // ---- Helper ----
   function extractCountryCode(feature: any): string | undefined {
-    if (feature.place_type?.includes("country") && feature.properties?.short_code) {
-      return feature.properties.short_code.toUpperCase()
-    }
-    const countryContext = feature.context?.find((c: any) => c.id?.startsWith("country"))
-    return countryContext?.short_code?.toUpperCase()
+    // Search Box Category API returns context differently
+    return feature.properties?.context?.country?.country_code?.toUpperCase()
   }
 
-  // ---- NEW: fetch nearby POIs using category name ----
-  const fetchNearbyPois = useCallback(async (categoryName: string, bounds: [number, number, number, number]) => {
-    if (!MAPBOX_TOKEN) {
-      console.error("Mapbox token missing")
-      return
-    }
-    const [minLng, minLat, maxLng, maxLat] = bounds
-    const bbox = `${minLng},${minLat},${maxLng},${maxLat}`
-    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(categoryName)}.json?access_token=${MAPBOX_TOKEN}&bbox=${bbox}&limit=15&types=poi`
-    try {
-      const response = await fetch(url)
-      if (!response.ok) {
-        console.error("POI fetch failed:", response.status)
+  // ---- NEW: fetch nearby POIs using Mapbox Search Box Category API ----
+  const fetchNearbyPois = useCallback(
+    async (mapboxCategories: string[], bounds: [number, number, number, number]) => {
+      if (!MAPBOX_TOKEN || mapboxCategories.length === 0) {
+        setTemporaryPois([])
         return
       }
-      const data = await response.json()
-      if (data.features) {
-        const pois: TemporaryPoi[] = data.features.map((f: any) => ({
-          id: f.id,
-          placeName: f.text,
-          address: f.place_name,
-          lat: f.center[1],
-          lng: f.center[0],
-          categoryName: categoryName,   // store the category name
-          countryCode: extractCountryCode(f),
-        }))
-        setTemporaryPois(pois)
-      }
-    } catch (error) {
-      console.error("Error fetching POIs:", error)
-    }
-  }, [])
+      const [minLng, minLat, maxLng, maxLat] = bounds
+      const bbox = `${minLng},${minLat},${maxLng},${maxLat}`
 
-  // ---- Clear filter ----
-  const clearFilter = useCallback(() => {
-    setActiveCategoryId(null)
-    setTemporaryPois([])
-  }, [])
+      try {
+        const results = await Promise.all(
+          mapboxCategories.map(async (category) => {
+            const url = `https://api.mapbox.com/search/searchbox/v1/category/${encodeURIComponent(category)}?access_token=${MAPBOX_TOKEN}&bbox=${bbox}&limit=25`
+            const response = await fetch(url)
+            if (!response.ok) return []
+            const data = await response.json()
+            return (data.features ?? []).map((f: any) => ({
+              id: f.properties.mapbox_id || f.id,
+              placeName: f.properties.name || "Unnamed",
+              address: f.properties.full_address ?? f.properties.place_formatted ?? f.properties.name,
+              lat: f.geometry.coordinates[1],
+              lng: f.geometry.coordinates[0],
+              categoryName: category,
+              countryCode: extractCountryCode(f),
+            }))
+          })
+        )
+
+        const savedPlaceIds = new Set(pins.map((p) => p.placeId))
+        const allPois = results.flat()
+        const uniquePois = allPois.filter((poi) => !savedPlaceIds.has(poi.id))
+        setTemporaryPois(uniquePois)
+console.log("temporaryPois:", results.flat())
+      } catch (error) {
+        console.error("Error fetching POIs:", error)
+      }
+    },
+    [pins]
+  )
 
   // ---- Context value ----
   const value: PinsContextValue = {
@@ -242,8 +281,8 @@ export function PinsProvider({ children }: { children: ReactNode }) {
     highlightedPinId,
     setHighlightedPinId,
     // NEW
-    activeCategoryId,
-    setActiveCategoryId,
+    activeCategoryIds,
+    toggleCategoryFilter,
     filteredPins,
     temporaryPois,
     setTemporaryPois,
@@ -251,6 +290,8 @@ export function PinsProvider({ children }: { children: ReactNode }) {
     clearFilter,
     mapBounds,
     setMapBounds,
+    pinVisibility,
+    setPinVisibility,
   }
 
   return <PinsContext.Provider value={value}>{children}</PinsContext.Provider>

@@ -28,6 +28,7 @@ import { usePins } from "@/context/usePins"
 import { useCategories } from "@/context/useCategories"
 import { usePanelManager } from "@/hooks/usePanelManager"
 import { notifyLocked } from "@/lib/notify"
+import FilterPanel from "@/components/filter/FilterPanel"
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 
@@ -60,13 +61,23 @@ function extractCountryCode(feature: any): string | undefined {
 
 interface NavbarProps {
   visitedIso2?: Set<string>
-  onFilterClick?: (categoryName: string) => void
+  onFilterClick?: (categoryName: string) => void // kept for compatibility, not used
 }
 
 const Navbar = ({ visitedIso2 = new Set(), onFilterClick }: NavbarProps) => {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
-  const { setFlyToTarget, activeCategoryId, clearFilter, setActiveCategoryId } = usePins()
+  const {
+    setFlyToTarget,
+    activeCategoryIds,
+    toggleCategoryFilter,
+    clearFilter,
+    fetchNearbyPois,
+    mapBounds,
+    setTemporaryPois,
+    pinVisibility,
+    setPinVisibility,
+  } = usePins()
   const { categories, loading: categoriesLoading } = useCategories()
   const { openPreview } = usePanelManager()
 
@@ -81,6 +92,9 @@ const Navbar = ({ visitedIso2 = new Set(), onFilterClick }: NavbarProps) => {
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
 
+  // ---- Local state for filter panel ----
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false)
+
   const initials = user
     ? `${user.firstName[0] ?? ""}${user.lastName[0] ?? ""}`.toUpperCase()
     : "GQ"
@@ -94,6 +108,28 @@ const Navbar = ({ visitedIso2 = new Set(), onFilterClick }: NavbarProps) => {
     }
   }
 
+  // ---- Auto‑fetch nearby POIs when filter selection changes and bounds exist ----
+  // Now uses mapboxCategory instead of category name
+  useEffect(() => {
+    if (activeCategoryIds.length === 0 || !mapBounds) {
+      // If no filter, clear temporary POIs
+      setTemporaryPois([])
+      return
+    }
+    // Resolve mapboxCategory from the selected categories
+    const mapboxCategories = activeCategoryIds
+      .map((id) => categories?.find((c) => c.id === id)?.mapboxCategory)
+      .filter((c): c is string => Boolean(c))
+
+    if (mapboxCategories.length === 0) {
+      // No real-world categories selected – clear temp pois
+      setTemporaryPois([])
+      return
+    }
+    fetchNearbyPois(mapboxCategories, mapBounds)
+  }, [activeCategoryIds, mapBounds, categories, fetchNearbyPois, setTemporaryPois])
+
+  // ---- Search functions (unchanged) ----
   const searchLocations = useCallback(async (query: string) => {
     if (!query.trim() || query.length < 2) {
       setSearchResults([])
@@ -198,18 +234,6 @@ const Navbar = ({ visitedIso2 = new Set(), onFilterClick }: NavbarProps) => {
     setSelectedIndex(-1)
   }
 
-  const handleFilterClick = (categoryId: string, categoryName: string) => {
-    if (activeCategoryId === categoryId) {
-      clearFilter()
-      return
-    }
-
-    setActiveCategoryId(categoryId)
-    if (onFilterClick) {
-      onFilterClick(categoryName)
-    }
-  }
-
   const clearSearch = () => {
     setSearchQuery("")
     setSearchResults([])
@@ -233,7 +257,6 @@ const Navbar = ({ visitedIso2 = new Set(), onFilterClick }: NavbarProps) => {
     }
   }
 
-  // Get the icon for a category name
   const getIcon = (name: string): LucideIcon => {
     return categoryIconMap[name] || DefaultIcon
   }
@@ -332,29 +355,54 @@ const Navbar = ({ visitedIso2 = new Set(), onFilterClick }: NavbarProps) => {
         )}
       </div>
 
-      <Button
-        variant="outline"
-        size="icon"
-        className="shrink-0 rounded-lg border-border/40 bg-card/40 hover:bg-muted/40 hover:border-border/60 transition-all"
-      >
-        <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
-      </Button>
+      {/* ---- FILTER BUTTON (opens the panel) ---- */}
+      <div className="relative">
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => setIsFilterPanelOpen((o) => !o)}
+          className={`shrink-0 rounded-lg relative ${
+            activeCategoryIds.length > 0 ? 'border-primary/50 bg-primary/10' : 'border-border/40 bg-card/40'
+          }`}
+        >
+          <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
+          {activeCategoryIds.length > 0 && (
+            <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-[10px] text-primary-foreground flex items-center justify-center">
+              {activeCategoryIds.length}
+            </span>
+          )}
+        </Button>
+        {isFilterPanelOpen && (
+          <FilterPanel
+            categories={categories || []}
+            activeCategoryIds={activeCategoryIds}
+            onToggle={toggleCategoryFilter}
+            onClear={() => {
+              clearFilter()
+              setIsFilterPanelOpen(false)
+            }}
+            onClose={() => setIsFilterPanelOpen(false)}
+            pinVisibility={pinVisibility}
+            onVisibilityChange={setPinVisibility}
+          />
+        )}
+      </div>
 
+      {/* ---- QUICK ACCESS CATEGORY PILLS (keep as is, but use toggle) ---- */}
       <div className="hidden items-center gap-2 md:flex">
         {categoriesLoading ? (
-          // Optionally show a loader or placeholder
           <span className="text-xs text-muted-foreground">Loading categories...</span>
         ) : (
           <>
             {categories?.map((category) => {
-              const isActive = activeCategoryId === category.id
+              const isActive = activeCategoryIds.includes(category.id)
               const Icon = getIcon(category.name)
               return (
                 <Button
                   key={category.id}
                   variant="outline"
                   size="sm"
-                  onClick={() => handleFilterClick(category.id, category.name)}
+                  onClick={() => toggleCategoryFilter(category.id)}
                   className={`
                     gap-1.5 rounded-lg border-border/40 bg-card/40 
                     text-sm font-normal text-foreground 
@@ -370,11 +418,14 @@ const Navbar = ({ visitedIso2 = new Set(), onFilterClick }: NavbarProps) => {
             })}
           </>
         )}
-        {activeCategoryId && (
+        {activeCategoryIds.length > 0 && (
           <Button
             variant="ghost"
             size="sm"
-            onClick={clearFilter}
+            onClick={() => {
+              clearFilter()
+              setIsFilterPanelOpen(false)
+            }}
             className="gap-1 text-xs text-muted-foreground hover:text-foreground"
           >
             Clear <X className="h-3 w-3" />

@@ -8,6 +8,7 @@ import AppLayout from "@/components/layout/AppLayout"
 import ProtectedRoute from "@/components/ProtectedRoute"
 import { AuthProvider } from "@/context/AuthContext"
 
+
 const App = () => {
   return (
     <AuthProvider>

@@ -36,15 +36,15 @@ export const guests = pgTable("guests", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 })
 
+// db/schema.ts
 export const categories = pgTable("categories", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
   guestId: uuid("guest_id").references(() => guests.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   description: text("description").notNull(),
-})
-
-// --- GEOGRAPHIC HIERARCHY (UNIFIED PLACES) ---
+  mapboxCategory: text("mapbox_category"), // <-- ADD THIS
+})// --- GEOGRAPHIC HIERARCHY (UNIFIED PLACES) ---
 export const places = pgTable("places", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
