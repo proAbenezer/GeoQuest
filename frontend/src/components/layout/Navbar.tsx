@@ -110,26 +110,36 @@ const Navbar = ({ visitedIso2 = new Set(), onFilterClick }: NavbarProps) => {
 
   // ---- Auto‑fetch nearby POIs when filter selection changes and bounds exist ----
   // Now uses mapboxCategory instead of category name
-  useEffect(() => {
-    if (activeCategoryIds.length === 0 || !mapBounds) {
-      // If no filter, clear temporary POIs
-      setTemporaryPois([])
-      return
-    }
-    // Resolve mapboxCategory from the selected categories
-    const mapboxCategories = activeCategoryIds
-      .map((id) => categories?.find((c) => c.id === id)?.mapboxCategory)
-      .filter((c): c is string => Boolean(c))
+// Inside Navbar component
 
-    if (mapboxCategories.length === 0) {
-      // No real-world categories selected – clear temp pois
-      setTemporaryPois([])
-      return
-    }
-    fetchNearbyPois(mapboxCategories, mapBounds)
-  }, [activeCategoryIds, mapBounds, categories, fetchNearbyPois, setTemporaryPois])
+useEffect(() => {
+  console.log('🟡 Navbar effect triggered');
+  console.log('activeCategoryIds:', activeCategoryIds);
+  console.log('mapBounds:', mapBounds);
+  console.log('categories:', categories);
 
-  // ---- Search functions (unchanged) ----
+  if (activeCategoryIds.length === 0 || !mapBounds) {
+    setTemporaryPois([]);
+    return;
+  }
+
+  const selectedCategories = activeCategoryIds
+    .map((id) => {
+      const cat = categories?.find((c) => c.id === id);
+      return cat?.mapboxCategory ? { id: cat.id, mapboxCategory: cat.mapboxCategory } : null;
+    })
+    .filter((c): c is { id: string; mapboxCategory: string } => Boolean(c));
+
+  console.log('🟢 selectedCategories:', selectedCategories);
+
+  if (selectedCategories.length === 0) {
+    setTemporaryPois([]);
+    return;
+  }
+
+  console.log('🔵 Calling fetchNearbyPois with:', selectedCategories, mapBounds);
+  fetchNearbyPois(selectedCategories, mapBounds);
+}, [activeCategoryIds, mapBounds, categories, fetchNearbyPois, setTemporaryPois]);  // ---- Search functions (unchanged) ----
   const searchLocations = useCallback(async (query: string) => {
     if (!query.trim() || query.length < 2) {
       setSearchResults([])

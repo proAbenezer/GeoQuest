@@ -43,8 +43,11 @@ export const categories = pgTable("categories", {
   guestId: uuid("guest_id").references(() => guests.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   description: text("description").notNull(),
-  mapboxCategory: text("mapbox_category"), // <-- ADD THIS
-})// --- GEOGRAPHIC HIERARCHY (UNIFIED PLACES) ---
+  mapboxCategory: text("mapbox_category"),
+  mapboxCategoryConfidence: text("mapbox_category_confidence"),
+})
+
+// --- GEOGRAPHIC HIERARCHY (UNIFIED PLACES) ---
 export const places = pgTable("places", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),

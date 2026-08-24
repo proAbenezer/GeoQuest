@@ -43,6 +43,13 @@
       "when": 1787388798560,
       "tag": "0005_nosy_blue_blade",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787550875173,
+      "tag": "0006_cooing_frightful_four",
+      "breakpoints": true
     }
   ]
 }

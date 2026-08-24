@@ -1,14 +1,11 @@
 // components/pins/PinDetailPanel.tsx
 import { useState, useEffect } from "react"
-import { useSidebar } from "@/components/ui/sidebar"
-import { 
-  X, 
-  CheckCircle2, 
-  Circle, 
-  MapPin, 
-  Info, 
-  Pencil, 
-  Trash2, 
+import {
+  X,
+  CheckCircle2,
+  MapPin,
+  Pencil,
+  Trash2,
   CloudSun,
   Image as ImageIcon,
   Upload,
@@ -48,8 +45,6 @@ interface WeatherData {
 }
 
 const PinDetailPanel = () => {
-  // ✅ ALL HOOKS FIRST
-  const { state } = useSidebar()
   const {
     secondaryPanel,
     setSecondaryPanel,
@@ -137,8 +132,8 @@ const PinDetailPanel = () => {
     }
   }, [isEditing, pin?.id])
 
-  // ✅ EARLY RETURN AFTER ALL HOOKS
-  if (secondaryPanel?.type !== "pinDetail") return null  
+  // Early return
+  if (secondaryPanel?.type !== "pinDetail") return null
 
   const title = isPinDetail ? pin!.customName || pin!.name : secondaryPanel.placeName
   const category = isPinDetail ? categories.find((c) => c.id === pin!.categoryId) : null
@@ -259,18 +254,17 @@ const PinDetailPanel = () => {
     }
   }
 
-  const sidebarWidth = state === "expanded" ? "16rem" : "4.5rem"
-
+  // ✅ The panel reads the CSS variable set by Sidebar.tsx
   return (
     <div
       className="fixed inset-y-0 z-50 w-96 overflow-y-auto bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-l shadow-xl transition-[left] duration-200"
-      style={{ 
-        left: sidebarWidth,
+      style={{
+        left: 'var(--sidebar-width, 16rem)',
         top: 0,
-        height: "100vh"
+        height: '100vh'
       }}
     >
-      {/* ✅ HEADER - Matches sidebar header style */}
+      {/* HEADER */}
       <div className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur px-4 py-3">
         <div className="flex items-start justify-between">
           <div className="min-w-0">
@@ -358,7 +352,6 @@ const PinDetailPanel = () => {
 
       {isPinDetail && isEditing ? (
         <div className="space-y-3 px-3 py-4">
-          {/* Edit form fields with card styling */}
           <div className="rounded-xl border bg-card/50 p-3 space-y-3">
             <div>
               <label className="mb-1.5 block text-xs font-semibold tracking-wide text-muted-foreground uppercase">
@@ -401,7 +394,6 @@ const PinDetailPanel = () => {
               />
             </div>
 
-            {/* Image Upload */}
             <div>
               <label className="mb-1.5 block text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                 Image
@@ -457,17 +449,17 @@ const PinDetailPanel = () => {
           {editError && <p className="text-sm text-destructive">{editError}</p>}
 
           <div className="flex gap-3">
-            <Button 
-              variant="outline" 
-              className="flex-1" 
-              onClick={cancelEditing} 
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={cancelEditing}
               disabled={saving || isImageUploading}
             >
               Cancel
             </Button>
-            <Button 
-              className="flex-1" 
-              onClick={handleSaveEdit} 
+            <Button
+              className="flex-1"
+              onClick={handleSaveEdit}
               disabled={saving || isImageUploading}
             >
               {saving ? "Saving…" : "Save"}
@@ -476,7 +468,7 @@ const PinDetailPanel = () => {
         </div>
       ) : isPinDetail ? (
         <div className="px-3 py-4 space-y-3">
-          {/* ✅ IMAGE */}
+          {/* Image */}
           <div className="aspect-video w-full rounded-xl overflow-hidden bg-muted">
             {pin!.imageUrl ? (
               <img
@@ -492,7 +484,7 @@ const PinDetailPanel = () => {
             )}
           </div>
 
-          {/* ✅ TAGS - Category and Visited aligned to the right */}
+          {/* Tags */}
           <div className="flex items-center justify-end gap-2">
             <div className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary">
               {(() => {
@@ -509,15 +501,13 @@ const PinDetailPanel = () => {
             )}
           </div>
 
-          {/* ✅ SECTION 1: YOUR INFORMATION */}
+          {/* Your Information */}
           <div className="rounded-xl border bg-card/50 p-3 space-y-2">
             <div className="flex items-center gap-2 text-muted-foreground">
               <User className="h-3.5 w-3.5" />
               <h3 className="text-xs font-semibold uppercase tracking-wider">Your Information</h3>
             </div>
-            
             <div className="space-y-3">
-              {/* Custom Name */}
               {pin!.customName && (
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -529,8 +519,6 @@ const PinDetailPanel = () => {
                   </p>
                 </div>
               )}
-
-              {/* Custom Notes */}
               {pin!.customDescription && (
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -542,8 +530,6 @@ const PinDetailPanel = () => {
                   </p>
                 </div>
               )}
-
-              {/* Visited Date */}
               {pin!.visited && pin!.visitDate && (
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -558,15 +544,13 @@ const PinDetailPanel = () => {
             </div>
           </div>
 
-          {/* ✅ SECTION 2: MAP INFORMATION */}
+          {/* Map Information */}
           <div className="rounded-xl border bg-card/50 p-3 space-y-2">
             <div className="flex items-center gap-2 text-muted-foreground">
               <Map className="h-3.5 w-3.5" />
               <h3 className="text-xs font-semibold uppercase tracking-wider">Map Information</h3>
             </div>
-            
             <div className="space-y-3">
-              {/* Official Name */}
               <div className="space-y-0.5">
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Globe className="h-3 w-3" />
@@ -576,8 +560,6 @@ const PinDetailPanel = () => {
                   {pin!.name}
                 </p>
               </div>
-
-              {/* Address */}
               <div className="space-y-0.5">
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <MapPin className="h-3 w-3" />
@@ -587,8 +569,6 @@ const PinDetailPanel = () => {
                   {pin!.description}
                 </p>
               </div>
-
-              {/* Coordinates */}
               <div className="space-y-0.5">
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Compass className="h-3 w-3" />
@@ -598,8 +578,6 @@ const PinDetailPanel = () => {
                   {pin!.latitude.toFixed(6)}, {pin!.longitude.toFixed(6)}
                 </p>
               </div>
-
-              {/* Last Accessed */}
               {pin!.lastAccessedAt && (
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -614,7 +592,7 @@ const PinDetailPanel = () => {
             </div>
           </div>
 
-          {/* ✅ SECTION 3: WEATHER */}
+          {/* Weather */}
           <div className="rounded-xl border bg-card/50 p-3 space-y-2">
             <div className="flex items-center gap-2 text-muted-foreground">
               <CloudSun className="h-3.5 w-3.5" />

@@ -15,10 +15,11 @@ import { AuthProvider } from "@/context/AuthContext"
 import { Toaster } from "sonner"
 import { useMemo } from "react"
 
+// No context imports – Sidebar sets CSS variable itself
+
 function AppLayoutContent() {
   const { pins, fetchNearbyPois, mapBounds } = usePins()
 
-  // Derive visited countries from pins (each pin needs a `countryCode` field)
   const visitedIso2 = useMemo(() => {
     const countries = new Set<string>()
     pins.forEach(pin => {
@@ -39,6 +40,7 @@ function AppLayoutContent() {
 
   return (
     <div className="flex h-screen w-full bg-background text-foreground overflow-hidden">
+      {/* Sidebar no longer needs props */}
       <Sidebar />
       <div className="flex flex-col flex-1 min-w-0">
         <Navbar visitedIso2={visitedIso2} onFilterClick={handleFilterClick} />
@@ -46,6 +48,7 @@ function AppLayoutContent() {
           <Outlet />
         </main>
       </div>
+      {/* All panels will use the CSS variable */}
       <PinDetailPanel />
       <AddPinPanel />
       <PreviewPanel />

@@ -165,7 +165,6 @@
 .pin-image-preview {
   animation: imagePopIn 0.2s ease-out;
 }
-<<<<<<< HEAD
 
 /* ============================================ */
 /* ========== COMPLETE MAP BORDER FIX ========== */
@@ -179,7 +178,20 @@
 .mapboxgl-canvas-container {
   outline: none !important;
 }
-=======
 
 
->>>>>>> 9e3ce7a (finished setting up the sidebar)
+/* index.css or App.css */
+
+:root {
+  --sidebar-width: 16rem; /* default (expanded) */
+}
+
+/* When the sidebar is collapsed */
+html[data-sidebar-state="collapsed"] {
+  --sidebar-width: 4.5rem; /* adjust to your actual collapsed width */
+}
+
+/* Optional: if you want a smooth transition */
+* {
+  transition: --sidebar-width 0.2s ease; /* only works if you use @property, but not needed */
+}
