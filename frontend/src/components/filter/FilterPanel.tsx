@@ -1,6 +1,7 @@
-// components/filter/FilterPanel.tsx
 import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
+import { IconStack } from "@/components/ui/icon-stack"
+import { getCategoryIcon, getIconList } from "@/lib/categoryDisplay"
 import type { Category } from "@/types"
 
 type PinVisibility = "all" | "pinned" | "unpinned"
@@ -13,6 +14,7 @@ interface FilterPanelProps {
   onClose: () => void
   pinVisibility: PinVisibility
   onVisibilityChange: (mode: PinVisibility) => void
+  className?: string
 }
 
 export default function FilterPanel({
@@ -23,9 +25,12 @@ export default function FilterPanel({
   onClose,
   pinVisibility,
   onVisibilityChange,
+  className = "",
 }: FilterPanelProps) {
   return (
-    <div className="absolute top-full left-0 mt-1.5 z-[999] w-64 rounded-xl border border-border/40 bg-card/95 backdrop-blur shadow-xl p-2">
+    <div
+      className={`rounded-xl border border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-xl p-2 ${className}`}
+    >
       <div className="flex items-center justify-between px-2 py-1.5">
         <span className="text-xs font-medium text-muted-foreground">Filter by category</span>
         {activeCategoryIds.length > 0 && (
@@ -37,7 +42,6 @@ export default function FilterPanel({
           </button>
         )}
       </div>
-
       {/* ---- Visibility toggle ---- */}
       <div className="flex items-center gap-1 p-1 mb-2 rounded-lg bg-muted/40">
         {(["all", "pinned", "unpinned"] as const).map((mode) => (
@@ -54,7 +58,6 @@ export default function FilterPanel({
           </button>
         ))}
       </div>
-
       {categories.map((category) => (
         <label
           key={category.id}
@@ -63,6 +66,12 @@ export default function FilterPanel({
           <Checkbox
             checked={activeCategoryIds.includes(category.id)}
             onCheckedChange={() => onToggle(category.id)}
+          />
+          <IconStack
+            icons={getIconList(category.icons, getCategoryIcon(category.id))}
+            size="h-3.5 w-3.5"
+            max={2}
+            className="text-muted-foreground"
           />
           {category.name}
         </label>

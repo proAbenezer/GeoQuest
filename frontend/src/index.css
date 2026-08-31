@@ -166,32 +166,34 @@
   animation: imagePopIn 0.2s ease-out;
 }
 
-/* ============================================ */
-/* ========== COMPLETE MAP BORDER FIX ========== */
-/* ============================================ */
-/* This is the key fix - target the canvas element directly */
-.mapboxgl-canvas {
-  outline: none !important;
+/* ============================================
+   SIDE PANEL – pure CSS, no JS offset logic
+   ============================================ */
+
+.side-panel {
+  position: fixed;
+  inset-block: 0; /* top: 0; bottom: 0; */
+  left: var(--sidebar-width, 16rem); /* shadcn's var */
+  height: 100dvh; /* dynamic viewport height – better on mobile */
+  z-index: 50;
+  transition: left 0.2s cubic-bezier(0.4, 0, 0.2, 1); /* match shadcn's default */
+  /* width is set per-panel via className (w-80, w-96, etc.) */
+  overflow-y: auto;
 }
 
-/* Also remove any outline from the container to be safe */
-.mapboxgl-canvas-container {
-  outline: none !important;
+/* When sidebar is collapsed, use the icon width */
+[data-sidebar-state="collapsed"] .side-panel {
+  left: var(--sidebar-width-icon, 3rem);
 }
 
+/* ... existing code ... */
 
-/* index.css or App.css */
-
-:root {
-  --sidebar-width: 16rem; /* default (expanded) */
-}
-
-/* When the sidebar is collapsed */
-html[data-sidebar-state="collapsed"] {
-  --sidebar-width: 4.5rem; /* adjust to your actual collapsed width */
-}
-
-/* Optional: if you want a smooth transition */
-* {
-  transition: --sidebar-width 0.2s ease; /* only works if you use @property, but not needed */
+@media (max-width: 768px) {
+  .side-panel {
+    left: 0 !important;
+    width: 100% !important;
+    padding-bottom: env(safe-area-inset-bottom);
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
 }

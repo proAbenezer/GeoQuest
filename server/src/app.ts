@@ -7,6 +7,8 @@ import placesRouter from "./routes/places.ts"
 import categoriesRoutes from "./routes/categories.ts"
 import uploadsRouter from "./routes/uploads.ts"
 import recentlyVisitedRoutes from "./routes/recently-visited.ts"
+import userRouter from "./routes/user.ts"
+import commentsRouter from "./routes/comments.ts"
 
 const app = express()
 
@@ -26,5 +28,7 @@ app.use("/places", placesRouter)
 app.use("/categories", categoriesRoutes)
 app.use("/uploads", uploadsRouter)
 app.use("/recently-visited", recentlyVisitedRoutes)
+app.use("/user", userRouter)
+app.use("/comments", commentsRouter)
 
 export default app

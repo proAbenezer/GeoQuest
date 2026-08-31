@@ -55,8 +55,6 @@ const PinsList = ({ zoom }: PinsListProps) => {
         countryCode: poi.countryCode,
       }}
       zoom={zoom}
-      isTemporary={true}
-      categoryName={poi.categoryName}
     />
   ))}   </>
   )

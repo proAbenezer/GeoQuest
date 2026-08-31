@@ -18,6 +18,7 @@ function ownerFilter(req: { userId?: string; guestId?: string }) {
 const categorySchema = z.object({
   name: z.string().min(1),
   description: z.string().min(1),
+  icons: z.array(z.string()).optional(),
 })
 
 // ---- GET all categories ----
@@ -69,6 +70,7 @@ router.post("/", async (req, res) => {
       description: parsed.data.description,
       mapboxCategory,
       mapboxCategoryConfidence,
+      icons: parsed.data.icons ?? [],
       userId: req.userId ?? null,
       guestId: req.userId ? null : req.guestId,
     })

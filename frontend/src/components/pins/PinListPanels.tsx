@@ -1,6 +1,7 @@
 import { usePins } from "@/context/usePins"
 import { useCategories } from "@/context/useCategories"
-import { getCategoryIcon } from "@/lib/categoryDisplay"
+import { getCategoryIcon, getIconList } from "@/lib/categoryDisplay"
+import { IconStack } from "@/components/ui/icon-stack"
 import { CheckCircle2, Circle } from "lucide-react"
 import {
   SidebarGroup,
@@ -66,7 +67,6 @@ const PinListPanels = () => {
         ) : (
           <ul className="space-y-0.5">
             {filteredPins.map((pin) => {
-              const CategoryIcon = getCategoryIcon(pin.categoryId)
               return (
                 <li key={pin.id}>
                   <button
@@ -80,7 +80,12 @@ const PinListPanels = () => {
                     }}
                     className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-muted"
                   >
-                    <CategoryIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <IconStack
+                      icons={getIconList(pin.icons, getCategoryIcon(pin.categoryId))}
+                      size="h-4 w-4"
+                      max={2}
+                      className="shrink-0 text-muted-foreground"
+                    />
                     <span className="min-w-0 flex-1 truncate text-sm">
                       {pin.name}
                     </span>

@@ -20,6 +20,7 @@ import { Plus, ImageIcon, X, Loader2 } from "lucide-react"
 import { useCategories } from "@/context/useCategories"
 import { useImageUpload } from "@/hooks/useImageUpload"
 import CategoryForm from "@/components/layout/category/CategoryForm"
+import { IconMultiSelect } from "@/components/ui/icon-multi-select"
 
 type Props = {
   name: string
@@ -30,6 +31,9 @@ type Props = {
   setDescription: (v: string) => void
   imageUrl: string
   setImageUrl: (v: string) => void
+  icons: string[]
+  setIcons: (v: string[]) => void
+  onUploadError?: (message: string) => void
 }
 
 const ADD_CATEGORY_VALUE = "__add_category__"
@@ -43,6 +47,9 @@ const PinFormFields = ({
   setDescription,
   imageUrl,
   setImageUrl,
+  icons,
+  setIcons,
+  onUploadError,
 }: Props) => {
   const { categories, addCategory } = useCategories()
   const { uploadImage, uploading, error: uploadError } = useImageUpload()
@@ -51,10 +58,12 @@ const PinFormFields = ({
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState("")
   const [newCategoryDescription, setNewCategoryDescription] = useState("")
-  const [creatingCategory, setCreatingCategory] = useState(false)
+  const [newCategoryIcons, setNewCategoryIcons] = useState<string[]>([])
+  const [, setCreatingCategory] = useState(false)
   const [categoryError, setCategoryError] = useState<string | null>(null)
 
-  function handleSelectChange(value: string) {
+  function handleSelectChange(value: string | null) {
+    if (value === null) return
     if (value === ADD_CATEGORY_VALUE) {
       setCategoryDialogOpen(true)
       return
@@ -70,10 +79,12 @@ const PinFormFields = ({
       const category = await addCategory({
         name: newCategoryName.trim(),
         description: newCategoryDescription.trim() || "No description",
+        icons: newCategoryIcons,
       })
       setCategoryId(category.id)
       setNewCategoryName("")
       setNewCategoryDescription("")
+      setNewCategoryIcons([])
       setCategoryDialogOpen(false)
     } catch (err) {
       setCategoryError(err instanceof Error ? err.message : "Failed to create category")
@@ -86,7 +97,11 @@ const PinFormFields = ({
     const file = e.target.files?.[0]
     if (!file) return
     const url = await uploadImage(file)
-    if (url) setImageUrl(url)
+    if (url) {
+      setImageUrl(url)
+    } else if (onUploadError) {
+      onUploadError("Photo upload failed. You can still save the pin and add a photo later.")
+    }
     e.target.value = "" // allow re-selecting the same file later
   }
 
@@ -132,6 +147,11 @@ const PinFormFields = ({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Icons (optional)</Label>
+        <IconMultiSelect value={icons} onChange={setIcons} />
       </div>
 
       <div className="space-y-2">
@@ -190,6 +210,8 @@ const PinFormFields = ({
             setName={setNewCategoryName}
             description={newCategoryDescription}
             setDescription={setNewCategoryDescription}
+            icons={newCategoryIcons}
+            setIcons={setNewCategoryIcons}
             onSubmit={handleCreateCategory}
           />
           {categoryError && (

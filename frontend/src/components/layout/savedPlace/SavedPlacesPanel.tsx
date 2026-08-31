@@ -1,17 +1,15 @@
-// components/layout/savedPlace/SavedPlacesPanel.tsx
 import { useState } from "react"
-import { useSidebar } from "@/components/ui/sidebar"
 import { usePins } from "@/context/usePins"
 import { X, Search, Bookmark, BookmarkCheck, Plus, Sparkles } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import SidePanel from "@/components/layout/sidebar/SidePanel"
 
 const SavedPlacesPanel = () => {
-  const { state } = useSidebar()
   const { pins, toggleSaved, secondaryPanel, setSecondaryPanel } = usePins()
   const [searchQuery, setSearchQuery] = useState("")
 
-  // Check if saved places panel is open
-  if (secondaryPanel?.type !== "savedPlaces") return null
+  const isOpen = secondaryPanel?.type === "savedPlaces"
+  if (!isOpen) return null
 
   const savedPins = pins.filter((p) => p.saved)
   const unsavedPins = pins.filter((p) => !p.saved)
@@ -27,16 +25,15 @@ const SavedPlacesPanel = () => {
     setSearchQuery("")
   }
 
-  // Match sidebar width
-  const sidebarWidth = state === "expanded" ? "16rem" : "4.5rem"
-
   return (
-    <div
-      className="fixed inset-y-0 z-50 w-80 overflow-y-auto bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-r shadow-xl transition-[left] duration-200"
-      style={{ left: sidebarWidth }}
+    <SidePanel
+      widthClassName="w-80"
+      onOpenChange={(open) => {
+        if (!open) handleClose()
+      }}
     >
-      {/* Header */}
-      <div className="border-b px-4 py-3">
+      {/* Cleaner header – no backdrop, simple border-b, safe-area padding */}
+      <div className="border-b px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -46,22 +43,21 @@ const SavedPlacesPanel = () => {
           </div>
           <button
             onClick={handleClose}
-            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
       </div>
 
-      {/* Content */}
       <div className="px-3 py-4 space-y-3">
-        {/* Available Pins Section */}
+        {/* Available Pins to Save */}
         <div className="rounded-xl border bg-card/50 p-3 space-y-2">
           <div className="flex items-center gap-2 px-1 text-muted-foreground">
             <Plus className="h-3.5 w-3.5" />
             <h3 className="text-xs font-semibold uppercase tracking-wider">Available Pins to Save</h3>
           </div>
-          
+
           <div className="relative">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
@@ -71,7 +67,7 @@ const SavedPlacesPanel = () => {
               className="pl-9 h-9 text-sm bg-background/50 border-muted"
             />
           </div>
-          
+
           {filteredUnsaved.length === 0 ? (
             <p className="text-sm text-muted-foreground px-3 py-2 text-center">
               {searchQuery ? "No matching pins found." : "No pins available to save. Create a pin first!"}
@@ -92,13 +88,13 @@ const SavedPlacesPanel = () => {
           )}
         </div>
 
-        {/* Saved Places Section */}
+        {/* Saved Places List */}
         <div className="rounded-xl border bg-card/50 p-3 space-y-2">
           <div className="flex items-center gap-2 px-1 text-muted-foreground">
             <BookmarkCheck className="h-3.5 w-3.5" />
             <h3 className="text-xs font-semibold uppercase tracking-wider">Saved Places</h3>
           </div>
-          
+
           {savedPins.length === 0 ? (
             <p className="text-sm text-muted-foreground px-3 py-2 text-center">
               No saved places yet.
@@ -123,7 +119,7 @@ const SavedPlacesPanel = () => {
           )}
         </div>
 
-        {/* Quick Action */}
+        {/* Quick Actions */}
         <div className="rounded-xl border bg-card/50 p-3 space-y-2">
           <div className="flex items-center gap-2 px-1 text-muted-foreground">
             <Sparkles className="h-3.5 w-3.5" />
@@ -143,7 +139,7 @@ const SavedPlacesPanel = () => {
           </button>
         </div>
       </div>
-    </div>
+    </SidePanel>
   )
 }
 

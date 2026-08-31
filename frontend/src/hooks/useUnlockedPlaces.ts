@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { fetchUnlockedPlaces } from "@/lib/api"
 import { getCachedUnlocked, setCachedUnlocked } from "@/lib/idb"
-import type { UnlockedEntry } from "@/types/places"
+import type { UnlockedEntry } from "@/types/place"
 
 export function useUnlockedPlaces() {
   const [unlocked, setUnlocked] = useState<UnlockedEntry[]>([])

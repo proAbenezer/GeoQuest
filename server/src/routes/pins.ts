@@ -23,6 +23,7 @@ const pinSchema = z.object({
   saved: z.boolean().optional(),
   visitDate: z.string().nullable().optional(),
   imageUrl: z.string().nullable().optional(),
+  icons: z.array(z.string()).optional(),
 })
 
 const pinUpdateSchema = pinSchema.partial()

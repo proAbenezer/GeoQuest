@@ -1,5 +1,5 @@
 // lib/SidebarWidthContext.tsx
-import { createContext, useContext, ReactNode } from "react"
+import { createContext, useContext, type ReactNode } from "react"
 
 const SidebarWidthContext = createContext<number>(0)
 

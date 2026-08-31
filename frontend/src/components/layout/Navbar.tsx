@@ -9,7 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   Search,
   SlidersHorizontal,
@@ -20,6 +20,7 @@ import {
   Loader2,
   MapPin,
   Shield,
+  Menu, // ✅ added Menu icon
   type LucideIcon,
 } from "lucide-react"
 import { useAuth } from "@/context/AuthContext"
@@ -29,6 +30,7 @@ import { useCategories } from "@/context/useCategories"
 import { usePanelManager } from "@/hooks/usePanelManager"
 import { notifyLocked } from "@/lib/notify"
 import FilterPanel from "@/components/filter/FilterPanel"
+import { useSidebar } from "@/components/ui/sidebar" // ✅ added for mobile toggle
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 
@@ -37,11 +39,10 @@ const categoryIconMap: Record<string, LucideIcon> = {
   "Anime Conventions": Compass,
   "Gyms": Dumbbell,
   "Tech Companies": Building2,
-  // Add more as needed
 }
 
-// Default icon for unknown categories
 const DefaultIcon = MapPin
+const VISIBLE_CATEGORY_COUNT = 3
 
 interface SearchResult {
   id: string
@@ -61,12 +62,12 @@ function extractCountryCode(feature: any): string | undefined {
 
 interface NavbarProps {
   visitedIso2?: Set<string>
-  onFilterClick?: (categoryName: string) => void // kept for compatibility, not used
 }
 
-const Navbar = ({ visitedIso2 = new Set(), onFilterClick }: NavbarProps) => {
+const Navbar = ({ visitedIso2 = new Set() }: NavbarProps) => {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
+  const { toggleSidebar, openMobile } = useSidebar() // ✅ for mobile hamburger
   const {
     setFlyToTarget,
     activeCategoryIds,
@@ -77,6 +78,10 @@ const Navbar = ({ visitedIso2 = new Set(), onFilterClick }: NavbarProps) => {
     setTemporaryPois,
     pinVisibility,
     setPinVisibility,
+    filterPanelOpen,
+    openFilterPanel,
+    setSecondaryPanel,
+    openCommentView,
   } = usePins()
   const { categories, loading: categoriesLoading } = useCategories()
   const { openPreview } = usePanelManager()
@@ -92,9 +97,6 @@ const Navbar = ({ visitedIso2 = new Set(), onFilterClick }: NavbarProps) => {
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
 
-  // ---- Local state for filter panel ----
-  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false)
-
   const initials = user
     ? `${user.firstName[0] ?? ""}${user.lastName[0] ?? ""}`.toUpperCase()
     : "GQ"
@@ -108,61 +110,46 @@ const Navbar = ({ visitedIso2 = new Set(), onFilterClick }: NavbarProps) => {
     }
   }
 
-  // ---- Auto‑fetch nearby POIs when filter selection changes and bounds exist ----
-  // Now uses mapboxCategory instead of category name
-// Inside Navbar component
+  // ---- auto‑fetch POIs when filter changes ----
+  useEffect(() => {
+    if (activeCategoryIds.length === 0 || !mapBounds) {
+      setTemporaryPois([])
+      return
+    }
+    const selectedCategories = activeCategoryIds
+      .map((id) => {
+        const cat = categories?.find((c) => c.id === id)
+        return cat?.mapboxCategory ? { id: cat.id, mapboxCategory: cat.mapboxCategory } : null
+      })
+      .filter((c): c is { id: string; mapboxCategory: string } => Boolean(c))
 
-useEffect(() => {
-  console.log('🟡 Navbar effect triggered');
-  console.log('activeCategoryIds:', activeCategoryIds);
-  console.log('mapBounds:', mapBounds);
-  console.log('categories:', categories);
+    if (selectedCategories.length === 0) {
+      setTemporaryPois([])
+      return
+    }
+    fetchNearbyPois(selectedCategories, mapBounds)
+  }, [activeCategoryIds, mapBounds, categories, fetchNearbyPois, setTemporaryPois])
 
-  if (activeCategoryIds.length === 0 || !mapBounds) {
-    setTemporaryPois([]);
-    return;
-  }
-
-  const selectedCategories = activeCategoryIds
-    .map((id) => {
-      const cat = categories?.find((c) => c.id === id);
-      return cat?.mapboxCategory ? { id: cat.id, mapboxCategory: cat.mapboxCategory } : null;
-    })
-    .filter((c): c is { id: string; mapboxCategory: string } => Boolean(c));
-
-  console.log('🟢 selectedCategories:', selectedCategories);
-
-  if (selectedCategories.length === 0) {
-    setTemporaryPois([]);
-    return;
-  }
-
-  console.log('🔵 Calling fetchNearbyPois with:', selectedCategories, mapBounds);
-  fetchNearbyPois(selectedCategories, mapBounds);
-}, [activeCategoryIds, mapBounds, categories, fetchNearbyPois, setTemporaryPois]);  // ---- Search functions (unchanged) ----
+  // ---- Search ----
   const searchLocations = useCallback(async (query: string) => {
     if (!query.trim() || query.length < 2) {
       setSearchResults([])
       setIsOpen(false)
       return
     }
-
     abortControllerRef.current?.abort()
     const controller = new AbortController()
     abortControllerRef.current = controller
-
     setIsLoading(true)
     try {
       const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${MAPBOX_TOKEN}&limit=5&types=place,address,poi,locality,neighborhood&language=en`
       const response = await fetch(url, { signal: controller.signal })
-
       if (!response.ok) {
         console.error("Geocoding request failed:", response.status)
         setSearchResults([])
         setIsOpen(false)
         return
       }
-
       const data = await response.json()
       if (data.features && data.features.length > 0) {
         const results: SearchResult[] = data.features.map((feature: any) => ({
@@ -271,8 +258,41 @@ useEffect(() => {
     return categoryIconMap[name] || DefaultIcon
   }
 
+  const visibleCategories = categories?.slice(0, VISIBLE_CATEGORY_COUNT) ?? []
+
   return (
     <div className="relative z-50 flex items-center gap-3 border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 py-2.5 shadow-sm">
+      {/* ✅ Mobile hamburger menu button – restored */}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-9 w-9 rounded-lg md:hidden shrink-0"
+        onClick={() => {
+          // Opening the mobile nav is opening a sidebar — close the others so
+          // only one sidebar is open at a time.
+          if (!openMobile) {
+            setSecondaryPanel(null)
+            openFilterPanel(false)
+            openCommentView(false)
+          }
+          toggleSidebar()
+        }}
+        aria-label="Toggle menu"
+      >
+        <Menu className="h-4 w-4" />
+      </Button>
+
+      {/* Logo — matches the sidebar's brand chip exactly */}
+      <div className="hidden shrink-0 items-center gap-2.5 sm:flex">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-sm">
+          <MapPin className="h-4 w-4" />
+        </div>
+        <span className="font-heading text-lg font-semibold tracking-tight">
+          GeoQuest
+        </span>
+      </div>
+
+      {/* Search */}
       <div className="relative flex-1 max-w-md" ref={searchRef}>
         <div className="relative rounded-lg border border-border/40 bg-card/40 transition-all hover:border-border/60 focus-within:border-primary/50 focus-within:bg-card/60">
           <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -302,7 +322,7 @@ useEffect(() => {
         </div>
 
         {isOpen && (
-          <div className="absolute top-full left-0 right-0 mt-1.5 z-[999] max-h-80 overflow-y-auto rounded-xl border border-border/40 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/90 shadow-xl">
+          <div className="absolute top-full left-0 right-0 mt-1.5 z-[999] max-h-80 overflow-y-auto rounded-xl border border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-xl">
             {searchResults.length > 0 ? (
               <div className="py-1">
                 {searchResults.map((result, index) => {
@@ -365,68 +385,68 @@ useEffect(() => {
         )}
       </div>
 
-      {/* ---- FILTER BUTTON (opens the panel) ---- */}
-      <div className="relative">
+      {/* Filter button */}
+      <div className="relative shrink-0">
         <Button
           variant="outline"
           size="icon"
-          onClick={() => setIsFilterPanelOpen((o) => !o)}
+          onClick={() => openFilterPanel(!filterPanelOpen)}
           className={`shrink-0 rounded-lg relative ${
             activeCategoryIds.length > 0 ? 'border-primary/50 bg-primary/10' : 'border-border/40 bg-card/40'
           }`}
         >
-          <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
+          <SlidersHorizontal className={`h-4 w-4 ${activeCategoryIds.length > 0 ? 'text-primary' : 'text-muted-foreground'}`} />
           {activeCategoryIds.length > 0 && (
             <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-[10px] text-primary-foreground flex items-center justify-center">
               {activeCategoryIds.length}
             </span>
           )}
         </Button>
-        {isFilterPanelOpen && (
-          <FilterPanel
-            categories={categories || []}
-            activeCategoryIds={activeCategoryIds}
-            onToggle={toggleCategoryFilter}
-            onClear={() => {
-              clearFilter()
-              setIsFilterPanelOpen(false)
-            }}
-            onClose={() => setIsFilterPanelOpen(false)}
-            pinVisibility={pinVisibility}
-            onVisibilityChange={setPinVisibility}
-          />
+        {filterPanelOpen && (
+          <div className="absolute right-0 top-full z-50 mt-2 w-72 max-w-[calc(100vw-1.5rem)]">
+            <FilterPanel
+              categories={categories || []}
+              activeCategoryIds={activeCategoryIds}
+              onToggle={toggleCategoryFilter}
+              onClear={() => {
+                clearFilter()
+                openFilterPanel(false)
+              }}
+              onClose={() => openFilterPanel(false)}
+              pinVisibility={pinVisibility}
+              onVisibilityChange={setPinVisibility}
+            />
+          </div>
         )}
       </div>
 
-      {/* ---- QUICK ACCESS CATEGORY PILLS (keep as is, but use toggle) ---- */}
+      {/* Quick category pills */}
       <div className="hidden items-center gap-2 md:flex">
         {categoriesLoading ? (
           <span className="text-xs text-muted-foreground">Loading categories...</span>
         ) : (
-          <>
-            {categories?.map((category) => {
-              const isActive = activeCategoryIds.includes(category.id)
-              const Icon = getIcon(category.name)
-              return (
-                <Button
-                  key={category.id}
-                  variant="outline"
-                  size="sm"
-                  onClick={() => toggleCategoryFilter(category.id)}
-                  className={`
-                    gap-1.5 rounded-lg border-border/40 bg-card/40 
-                    text-sm font-normal text-foreground 
-                    hover:bg-muted/40 hover:border-border/60 
-                    transition-all
-                    ${isActive ? 'bg-primary/20 border-primary/50 ring-1 ring-primary/30' : ''}
-                  `}
-                >
-                  <Icon className={`h-4 w-4 ${isActive ? 'text-primary' : 'text-muted-foreground'}`} />
-                  {category.name}
-                </Button>
-              )
-            })}
-          </>
+          visibleCategories.map((category) => {
+            const isActive = activeCategoryIds.includes(category.id)
+            const Icon = getIcon(category.name)
+            return (
+              <Button
+                key={category.id}
+                variant="outline"
+                size="sm"
+                onClick={() => toggleCategoryFilter(category.id)}
+                className={`
+                  gap-1.5 rounded-lg border-border/40 bg-card/40
+                  text-sm text-foreground
+                  hover:bg-muted/40 hover:border-border/60
+                  transition-all
+                  ${isActive ? 'bg-primary/10 text-primary font-medium border-primary/50' : ''}
+                `}
+              >
+                <Icon className={`h-4 w-4 ${isActive ? 'text-primary' : 'text-muted-foreground'}`} />
+                {category.name}
+              </Button>
+            )
+          })
         )}
         {activeCategoryIds.length > 0 && (
           <Button
@@ -434,7 +454,7 @@ useEffect(() => {
             size="sm"
             onClick={() => {
               clearFilter()
-              setIsFilterPanelOpen(false)
+              openFilterPanel(false)
             }}
             className="gap-1 text-xs text-muted-foreground hover:text-foreground"
           >
@@ -443,15 +463,19 @@ useEffect(() => {
         )}
       </div>
 
+      {/* Profile avatar */}
       <div className="ml-auto">
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Avatar className="h-8 w-8 cursor-pointer rounded-lg border border-border/40 bg-card/40 hover:bg-muted/40 transition-all">
-              <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
-          </DropdownMenuTrigger>
+          <DropdownMenuTrigger
+            render={
+              <Avatar className="h-8 w-8 cursor-pointer rounded-lg bg-primary/10 text-primary shadow-sm hover:bg-primary/20 transition-all">
+                <AvatarImage src={user?.profileImage || undefined} alt={user?.username ?? "Profile"} />
+                <AvatarFallback className="bg-transparent text-primary text-xs font-medium">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+            }
+          />
           <DropdownMenuContent
             align="end"
             className="rounded-xl border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-lg"

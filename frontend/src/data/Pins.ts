@@ -3,6 +3,7 @@ import type { Pin } from "@/types"
 export const pins: Pin[] = [
   {
     id: "pin-001",
+    placeId: "place-001",
     name: "Fendika Cultural Club",
     latitude: 9.0158,
     longitude: 38.7658,
@@ -14,6 +15,7 @@ export const pins: Pin[] = [
   },
   {
     id: "pin-002",
+    placeId: "place-002",
     name: "Gemini Gym Bole",
     latitude: 8.9945,
     longitude: 38.7891,
@@ -23,6 +25,7 @@ export const pins: Pin[] = [
   },
   {
     id: "pin-003",
+    placeId: "place-003",
     name: "Fendika Cultural Club",
     latitude: 9.0158,
     longitude: 38.7658,
@@ -35,6 +38,7 @@ export const pins: Pin[] = [
   },
   {
     id: "pin-004",
+    placeId: "place-004",
     name: "Zemen Bank Innovation Hub",
     latitude: 9.0084,
     longitude: 38.7575,
@@ -44,6 +48,7 @@ export const pins: Pin[] = [
   },
   {
     id: "pin-005",
+    placeId: "place-005",
     name: "Comic Con Ethiopia Venue",
     latitude: 9.0227,
     longitude: 38.7469,
@@ -54,6 +59,7 @@ export const pins: Pin[] = [
   },
   {
     id: "pin-006",
+    placeId: "place-006",
     name: "Kefe Bunna Bet",
     latitude: 9.0107,
     longitude: 38.7613,
@@ -66,6 +72,7 @@ export const pins: Pin[] = [
   },
   {
     id: "pin-007",
+    placeId: "place-007",
     name: "CrossFit Addis",
     latitude: 8.9967,
     longitude: 38.7802,
@@ -77,6 +84,7 @@ export const pins: Pin[] = [
   },
   {
     id: "pin-008",
+    placeId: "place-008",
     name: "Unity Park Fitness Trail",
     latitude: 9.0339,
     longitude: 38.7539,
@@ -87,6 +95,7 @@ export const pins: Pin[] = [
   },
   {
     id: "pin-009",
+    placeId: "place-009",
     name: "iCog Labs Maker Space",
     latitude: 9.0192,
     longitude: 38.7701,
@@ -99,6 +108,7 @@ export const pins: Pin[] = [
   },
   {
     id: "pin-010",
+    placeId: "place-010",
     name: "Blue Nile Makerspace",
     latitude: 9.0055,
     longitude: 38.7495,
@@ -108,6 +118,7 @@ export const pins: Pin[] = [
   },
   {
     id: "pin-011",
+    placeId: "place-011",
     name: "Anime Addis Meetup Cafe",
     latitude: 9.0261,
     longitude: 38.7614,
@@ -118,6 +129,7 @@ export const pins: Pin[] = [
   },
   {
     id: "pin-012",
+    placeId: "place-012",
     name: "Kirkos Community Gym",
     latitude: 9.0011,
     longitude: 38.7452,

@@ -1,6 +1,6 @@
 // components/maps/MapView.tsx
 import Map from "react-map-gl/mapbox"
-import mapboxgl from "mapbox-gl"
+import type * as mapboxgl from "mapbox-gl"
 import MapControllers from "@/components/maps/MapControllers"
 import { useRef, useState, useMemo, useEffect, useCallback } from "react"
 import PinsList from "@/components/pins/PinList"
@@ -11,9 +11,11 @@ import { usePanelManager } from "@/hooks/usePanelManager"
 import { useRecentlyVisited } from "@/hooks/useRecentlyVisited"
 import { useLocationTracking } from "@/hooks/useLocationTracking"
 import { useAutoUnlock } from "@/hooks/useAutoUnlock"
+import { useVisitedCheckin } from "@/hooks/useVisitedCheckin"
 import { useVisitedCountriesPlaces } from "@/hooks/useVisitedCountriesPlaces"
 import { useUnlockedPlaces } from "@/hooks/useUnlockedPlaces"
 import { placesToGeoJson } from "@/lib/placesToGeoJson"
+import TopCommentWidget from "@/components/comments/TopCommentWidget"
 import { Loader2 } from "lucide-react"
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
@@ -22,7 +24,7 @@ export default function MapView() {
   const mapRef = useRef<any>(null)
   const geolocateControlRef = useRef<mapboxgl.GeolocateControl | null>(null)
   const [zoom, setZoom] = useState(12)
-  const { secondaryPanel, setSecondaryPanel, flyToTarget, setFlyToTarget, setMapBounds } = usePins()
+  const { flyToTarget, setFlyToTarget, setMapBounds, setViewportCenter } = usePins()
   const { openPreview } = usePanelManager()
   
   const { trackVisitedPlace } = useRecentlyVisited()
@@ -39,7 +41,11 @@ export default function MapView() {
 
   const { unlocked, refetch: refetchUnlocked } = useUnlockedPlaces()
 
-  const { places: allPlaces, visitedIso2, currentCountryStatus } = useVisitedCountriesPlaces(iso2, unlocked)
+  // GPS proximity check-in: marks the current identity's pins as visited when
+  // the existing location fix comes within range (reuses `location` above).
+  useVisitedCheckin(location)
+
+  const { places: allPlaces, currentCountryStatus } = useVisitedCountriesPlaces(iso2, unlocked)
 
   const unlockedIds = useMemo(() => new Set(unlocked.map((u) => u.placeId)), [unlocked])
   
@@ -65,13 +71,17 @@ export default function MapView() {
     setFlyToTarget(null)
   }, [flyToTarget, setFlyToTarget])
 
-  // ---- NEW: update map bounds on load and move ----
   const updateBounds = useCallback(() => {
     if (!mapRef.current) return
     const map = mapRef.current.getMap()
     const b = map.getBounds()
     setMapBounds([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()])
-  }, [setMapBounds])
+    // Phase 2: feed the top-comment widget the current viewport center so it
+    // can find the nearest comment-bearing location (pan/zoom only — GPS and
+    // pin clicks don't touch this).
+    const center = map.getCenter()
+    setViewportCenter({ latitude: center.lat, longitude: center.lng })
+  }, [setMapBounds, setViewportCenter])
 
   async function handleMapClick(e: any) {
     const { lat, lng } = e.lngLat
@@ -116,11 +126,12 @@ export default function MapView() {
     const removeBorders = () => {
       document.querySelectorAll('.mapboxgl-map, .mapboxgl-canvas-container, .mapboxgl-canvas, .map-wrapper, .map-container')
         .forEach(el => {
-          el.style.border = 'none';
-          el.style.outline = 'none';
-          el.style.boxShadow = 'none';
-          el.style.borderStyle = 'none';
-          el.style.borderWidth = '0';
+          const node = el as HTMLElement
+          node.style.border = 'none';
+          node.style.outline = 'none';
+          node.style.boxShadow = 'none';
+          node.style.borderStyle = 'none';
+          node.style.borderWidth = '0';
         });
     };
     
@@ -153,14 +164,15 @@ export default function MapView() {
         <PinsList zoom={zoom} />
       </Map>
       {(currentCountryStatus === "fetching" || trackingStatus === "locating") && (
-        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20 bg-background/90 backdrop-blur border rounded-lg px-4 py-2 shadow-lg flex items-center gap-2">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          <p className="text-sm">
+        <div className="absolute top-[max(1.5rem,env(safe-area-inset-top))] left-1/2 -translate-x-1/2 z-20 bg-background/90 backdrop-blur border rounded-lg px-4 py-2 shadow-lg flex items-center gap-2 max-w-[calc(100%-2rem)]">
+          <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+          <p className="text-sm truncate">
             {trackingStatus === "locating" ? "Finding your location..." : "Fetching information for this area..."}
           </p>
         </div>
       )}
       <UnlockStatusBanner result={result} error={unlockError ?? trackingError} />
+      <TopCommentWidget />
     </div>
   )
 }

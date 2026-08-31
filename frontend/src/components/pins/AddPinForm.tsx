@@ -1,6 +1,5 @@
 // components/pins/AddPinForm.tsx
 import { useState, useEffect, useMemo } from "react"
-import { useSidebar } from "@/components/ui/sidebar"
 import { usePins } from "@/context/usePins"
 import { useCategories } from "@/context/useCategories"
 import { Button } from "@/components/ui/button"
@@ -13,9 +12,9 @@ import LocationSearchField from "./LocationSearchField"
 import LocationPreview from "@/components/pins/LocationPreview"
 import PinFormFields from "@/components/pins/PinFormFields"
 import CategoryForm from "@/components/layout/category/CategoryForm"
+import SidePanel from "@/components/layout/sidebar/SidePanel"
 
 const AddPinPanel = () => {
-  const { state } = useSidebar()
   const {
     addPin,
     secondaryPanel,
@@ -27,24 +26,20 @@ const AddPinPanel = () => {
   const { markAsPinned } = useRecentlyVisited()
   const { categories, loading: categoriesLoading, addCategory } = useCategories()
 
-  // Get recentlyVisitedId from secondaryPanel if it exists
   const recentlyVisitedId = secondaryPanel?.type === "addPin" ? secondaryPanel.recentlyVisitedId : null
 
-  // User's own custom label — separate from the place's own name/address,
-  // which comes from the map/reverse-geocode and is shown via LocationPreview.
   const [pinName, setPinName] = useState("")
   const [pinDescription, setPinDescription] = useState("")
   const [categoryId, setCategoryId] = useState("")
   const [imageUrl, setImageUrl] = useState("")
-
+  const [pinIcons, setPinIcons] = useState<string[]>([])
   const [uploadError, setUploadError] = useState<string | null>(null)
-
-  // Stops auto-filling pinName from the place once the user starts typing their own.
   const [nameTouched, setNameTouched] = useState(false)
 
   const [newCategoryName, setNewCategoryName] = useState("")
   const [newCategoryDescription, setNewCategoryDescription] = useState("")
-  const [creatingCategory, setCreatingCategory] = useState(false)
+  const [newCategoryIcons, setNewCategoryIcons] = useState<string[]>([])
+  const [, setCreatingCategory] = useState(false)
   const [categoryError, setCategoryError] = useState<string | null>(null)
 
   const search = useLocationSearch(prefillLocation)
@@ -82,6 +77,7 @@ const AddPinPanel = () => {
     setPinDescription("")
     setCategoryId("")
     setImageUrl("")
+    setPinIcons([])
     setUploadError(null)
     setNameTouched(false)
     search.reset()
@@ -101,10 +97,12 @@ const AddPinPanel = () => {
       const category = await addCategory({
         name: newCategoryName.trim(),
         description: newCategoryDescription.trim() || "No description",
+        icons: newCategoryIcons,
       })
       setCategoryId(category.id)
       setNewCategoryName("")
       setNewCategoryDescription("")
+      setNewCategoryIcons([])
     } catch (err) {
       setCategoryError(err instanceof Error ? err.message : "Failed to create category")
     } finally {
@@ -133,9 +131,9 @@ const AddPinPanel = () => {
         categoryId,
         placeId: placeCheck.placeId,
         imageUrl: imageUrl.trim() || undefined,
+        icons: pinIcons,
       })
 
-      // ✅ Mark as pinned in recently visited if this came from the recently visited list
       if (recentlyVisitedId) {
         await markAsPinned(recentlyVisitedId, newPin.id)
       }
@@ -146,25 +144,25 @@ const AddPinPanel = () => {
     }
   }
 
-  const sidebarWidth = state === "expanded" ? "16rem" : "4.5rem"
-
   return (
-    <div
-      className="fixed inset-y-0 z-50 w-80 overflow-y-auto bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-r shadow-xl transition-[left] duration-200"
-      style={{ left: sidebarWidth }}
+    <SidePanel
+      widthClassName="w-80"
+      onOpenChange={(open) => {
+        if (!open) setSecondaryPanel(null)
+      }}
     >
-      {/* Header - matches sidebar header style */}
-      <div className="border-b px-4 py-3">
+      {/* Header */}
+      <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-sm">
               <MapPin className="h-4 w-4" />
             </div>
             <span className="font-heading text-lg font-semibold tracking-tight">Add New Pin</span>
           </div>
           <button
             onClick={resetForm}
-            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="rounded-lg p-2.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <X className="h-4 w-4" />
           </button>
@@ -186,6 +184,8 @@ const AddPinPanel = () => {
               setName={setNewCategoryName}
               description={newCategoryDescription}
               setDescription={setNewCategoryDescription}
+              icons={newCategoryIcons}
+              setIcons={setNewCategoryIcons}
               onSubmit={handleCreateFirstCategory}
             />
             {categoryError && (
@@ -215,7 +215,6 @@ const AddPinPanel = () => {
               </div>
             )}
 
-            {/* Location Preview */}
             <LocationPreview location={search.location} />
 
             {isBlocked && (
@@ -237,7 +236,6 @@ const AddPinPanel = () => {
               </div>
             )}
 
-            {/* Pin Form Fields - wrapped in card style */}
             <div className="rounded-xl border bg-card/50 p-3 space-y-3">
               <PinFormFields
                 name={pinName}
@@ -248,6 +246,8 @@ const AddPinPanel = () => {
                 setDescription={setPinDescription}
                 imageUrl={imageUrl}
                 setImageUrl={setImageUrl}
+                icons={pinIcons}
+                setIcons={setPinIcons}
                 onUploadError={setUploadError}
               />
             </div>
@@ -268,7 +268,7 @@ const AddPinPanel = () => {
           </form>
         )}
       </div>
-    </div>
+    </SidePanel>
   )
 }
 

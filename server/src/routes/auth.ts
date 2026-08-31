@@ -5,8 +5,9 @@ import jwt from "jsonwebtoken"
 import { z } from "zod"
 import { eq } from "drizzle-orm"
 import { db } from "../db/index.js"
-import { users, unlockedPlaces, pins } from "../db/schema.js"
+import { users } from "../db/schema.js"
 import { requireAuth, readExistingGuestId } from "../middleware/auth.js"
+import { migrateGuestData } from "../lib/migrateGuestData.js"
 
 const router = Router()
 const JWT_SECRET = process.env.JWT_SECRET!
@@ -67,6 +68,8 @@ router.post("/signup", async (req, res) => {
       username: users.username,
       firstName: users.firstName,
       lastName: users.lastName,
+      profileImage: users.profileImage,
+      bannerImage: users.bannerImage,
     })
 
   // --- Reclaim guest history, if any ---
@@ -74,15 +77,8 @@ router.post("/signup", async (req, res) => {
   // visible/auditable — a reclaimed row ends up with BOTH userId and guestId set.
   const guestId = readExistingGuestId(req)
   if (guestId) {
-    await db
-      .update(unlockedPlaces)
-      .set({ userId: user.id })
-      .where(eq(unlockedPlaces.guestId, guestId))
-
-    await db
-      .update(pins)
-      .set({ userId: user.id })
-      .where(eq(pins.guestId, guestId))
+    // Reclaim pins, categories, unlock progress, and recently visited.
+    await migrateGuestData(user.id, guestId)
 
     // Guest identity is no longer needed as an anonymous session —
     // the person is authenticated now. Clear the guest cookie.
@@ -108,6 +104,16 @@ router.post("/login", async (req, res) => {
   }
   const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: "7d" })
   res.cookie("token", token, cookieOptions)
+
+  // Reclaim any guest history from this browser (pins, categories, unlock
+  // progress, recently visited), then drop the guest session — the person
+  // is authenticated now.
+  const guestId = readExistingGuestId(req)
+  if (guestId) {
+    await migrateGuestData(user.id, guestId)
+    res.clearCookie(GUEST_COOKIE_NAME, cookieOptions)
+  }
+
   res.json({
     user: {
       id: user.id,
@@ -115,6 +121,8 @@ router.post("/login", async (req, res) => {
       username: user.username,
       firstName: user.firstName,
       lastName: user.lastName,
+      profileImage: user.profileImage,
+      bannerImage: user.bannerImage,
     },
   })
 })
@@ -122,7 +130,15 @@ router.post("/login", async (req, res) => {
 router.get("/me", requireAuth, async (req, res) => {
   const user = await db.query.users.findFirst({
     where: eq(users.id, req.userId!),
-    columns: { id: true, email: true, username: true, firstName: true, lastName: true },
+    columns: {
+      id: true,
+      email: true,
+      username: true,
+      firstName: true,
+      lastName: true,
+      profileImage: true,
+      bannerImage: true,
+    },
   })
   res.json({ user })
 })

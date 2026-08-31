@@ -162,7 +162,7 @@ const Signup = () => {
               </div>
             </CardContent>
 
-            <CardFooter className="flex flex-col gap-4 pt-2">
+            <CardFooter className="flex flex-col gap-4 pt-6">
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? "Creating account..." : "Sign up"}
               </Button>

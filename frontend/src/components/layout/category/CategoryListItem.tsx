@@ -1,5 +1,7 @@
 import { Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { IconStack } from "@/components/ui/icon-stack"
+import { getIconList, getCategoryIcon } from "@/lib/categoryDisplay"
 import type { Category } from "@/types"
 
 type Props = {
@@ -11,13 +13,21 @@ type Props = {
 const CategoryListItem = ({ category, error, onDelete }: Props) => (
   <div className="border-b px-5 py-3 last:border-b-0">
     <div className="flex items-center justify-between">
-      <div>
-        <p className="text-sm font-medium">{category.name}</p>
-        {category.description && (
-          <p className="text-xs text-muted-foreground">
-            {category.description}
-          </p>
-        )}
+      <div className="flex items-center gap-2">
+        <IconStack
+          icons={getIconList(category.icons, getCategoryIcon(category.id))}
+          size="h-3.5 w-3.5"
+          max={2}
+          className="text-primary shrink-0"
+        />
+        <div>
+          <p className="text-sm font-medium">{category.name}</p>
+          {category.description && (
+            <p className="text-xs text-muted-foreground">
+              {category.description}
+            </p>
+          )}
+        </div>
       </div>
       <Button
         type="button"

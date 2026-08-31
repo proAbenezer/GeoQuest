@@ -50,6 +50,27 @@
       "when": 1787550875173,
       "tag": "0006_cooing_frightful_four",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788158982510,
+      "tag": "0007_last_mantis",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788164684540,
+      "tag": "0008_faithful_lady_vermin",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788175078064,
+      "tag": "0009_supreme_zuras",
+      "breakpoints": true
     }
   ]
 }

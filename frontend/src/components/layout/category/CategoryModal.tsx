@@ -6,6 +6,8 @@ type Props = {
   setName: (v: string) => void
   description: string
   setDescription: (v: string) => void
+  icons: string[]
+  setIcons: (v: string[]) => void
   onSubmit: () => void
   onClose: () => void
   title?: string
@@ -17,6 +19,8 @@ const CategoryModal = ({
   setName,
   description,
   setDescription,
+  icons,
+  setIcons,
   onSubmit,
   onClose,
   title = "Manage Categories",
@@ -41,6 +45,8 @@ const CategoryModal = ({
         setName={setName}
         description={description}
         setDescription={setDescription}
+        icons={icons}
+        setIcons={setIcons}
         onSubmit={onSubmit}
       />
     </div>

@@ -1,5 +1,5 @@
 import { get, set } from "idb-keyval"
-import type { Place, UnlockedEntry } from "@/types/places"
+import type { Place, UnlockedEntry } from "@/types/place"
 
 const placesKey = (iso2: string) => `geoquest:places:${iso2}`
 const UNLOCKED_KEY = "geoquest:unlocked"

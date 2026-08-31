@@ -6,6 +6,8 @@ type User = {
   username: string
   firstName: string
   lastName: string
+  profileImage?: string   // added
+  bannerImage?: string    // added
 }
 
 export async function login(email: string, password: string): Promise<User> {
@@ -65,4 +67,26 @@ export async function logout(): Promise<void> {
   if (!response.ok) {
     throw new Error("Failed to log out")
   }
+}
+
+// ✅ NEW: update user profile (images + account info)
+export async function updateProfile(data: {
+  profileImage?: string
+  bannerImage?: string
+  firstName?: string
+  lastName?: string
+  username?: string
+}): Promise<User> {
+  const response = await fetch(`${API_URL}/user/profile`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  })
+
+  const result = await response.json()
+  if (!response.ok) {
+    throw new Error(result.error || "Failed to update profile")
+  }
+  return result.user  // assuming the backend returns { user: updatedUser }
 }

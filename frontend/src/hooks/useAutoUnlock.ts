@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react"
 import * as turf from "@turf/turf"
 import { unlockPlace } from "@/lib/api"
-import type { Place, UnlockedEntry } from "@/types/places"
+import type { Place } from "@/types/place"
 
 const RECHECK_DISTANCE_M = 15
 
@@ -77,7 +77,7 @@ export function useAutoUnlock(
         const placeData = {
           id: match.id,
           name: match.name,
-          address: match.address || match.name,
+          address: match.name,
           latitude: location.latitude,
           longitude: location.longitude,
         }
@@ -92,7 +92,7 @@ export function useAutoUnlock(
           trackVisitedPlace({
             placeId: match.id,
             name: match.name,
-            address: match.address || match.name,
+            address: match.name,
             latitude: location.latitude,
             longitude: location.longitude,
           })

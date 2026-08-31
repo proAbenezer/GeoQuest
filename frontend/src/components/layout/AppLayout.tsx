@@ -1,6 +1,6 @@
 // AppLayout.tsx
 import { Outlet } from "react-router-dom"
-import { SidebarProvider } from "@/components/ui/sidebar"
+import { SidebarProvider, useSidebar } from "@/components/ui/sidebar"
 import Navbar from "@/components/layout/Navbar"
 import Sidebar from "@/components/layout/sidebar/Sidebar"
 import { PinsProvider, usePins } from "@/context/usePins"
@@ -10,15 +10,57 @@ import PreviewPanel from "../pins/PreviewPanel"
 import SettingsPanel from "@/components/layout/SettingsPanel"
 import CategoryManagerDialog from "@/components/layout/category/CategoryManagerDialog"
 import SavedPlacesPanel from "@/components/layout/savedPlace/SavedPlacesPanel"
+import AddCommentPanel from "@/components/comments/AddCommentPanel"
 import { CategoriesProvider } from "@/context/useCategories"
-import { AuthProvider } from "@/context/AuthContext"
 import { Toaster } from "sonner"
-import { useMemo } from "react"
-
-// No context imports – Sidebar sets CSS variable itself
+import { useMemo, useEffect, useRef } from "react"
 
 function AppLayoutContent() {
-  const { pins, fetchNearbyPois, mapBounds } = usePins()
+  const { state, open, setOpen, openMobile, setOpenMobile } = useSidebar()
+  const { pins, secondaryPanel, setSecondaryPanel, filterPanelOpen, openFilterPanel, commentViewOpen, openCommentView } = usePins()
+
+  // ---- Single-sidebar-open policy, main nav sidebar included ----
+  // The overlay sidebars (secondaryPanel / filter / comment view) coordinate
+  // with each other inside `usePins`. The main nav sidebar's open state lives
+  // in the SidebarProvider, which wraps this layout — so the cross-sidebar
+  // coordination has to happen here, where both contexts are in scope.
+
+  // Opening the main nav sidebar (expand on desktop / mobile sheet) closes any
+  // other sidebar that is currently open.
+  const wasNavOpenRef = useRef(open)
+  useEffect(() => {
+    const opened = open && !wasNavOpenRef.current
+    wasNavOpenRef.current = open
+    if (opened) {
+      setSecondaryPanel(null)
+      openFilterPanel(false)
+      openCommentView(false)
+    }
+  }, [open, setSecondaryPanel, openFilterPanel, openCommentView])
+
+  const wasNavOpenMobileRef = useRef(openMobile)
+  useEffect(() => {
+    const opened = openMobile && !wasNavOpenMobileRef.current
+    wasNavOpenMobileRef.current = openMobile
+    if (opened) {
+      setSecondaryPanel(null)
+      openFilterPanel(false)
+      openCommentView(false)
+    }
+  }, [openMobile, setSecondaryPanel, openFilterPanel, openCommentView])
+
+  // Opening any other sidebar collapses the main nav sidebar, so only one
+  // sidebar is ever visible at a time.
+  const otherSidebarOpen = secondaryPanel !== null || filterPanelOpen || commentViewOpen
+  const wasOtherSidebarOpenRef = useRef(otherSidebarOpen)
+  useEffect(() => {
+    const opened = otherSidebarOpen && !wasOtherSidebarOpenRef.current
+    wasOtherSidebarOpenRef.current = otherSidebarOpen
+    if (opened) {
+      setOpen(false)
+      setOpenMobile(false)
+    }
+  }, [otherSidebarOpen, setOpen, setOpenMobile])
 
   const visitedIso2 = useMemo(() => {
     const countries = new Set<string>()
@@ -30,30 +72,24 @@ function AppLayoutContent() {
     return countries
   }, [pins])
 
-  const handleFilterClick = (category: string) => {
-    if (mapBounds) {
-      fetchNearbyPois(category, mapBounds)
-    } else {
-      console.warn("Map bounds not available yet")
-    }
-  }
-
   return (
-    <div className="flex h-screen w-full bg-background text-foreground overflow-hidden">
-      {/* Sidebar no longer needs props */}
+    <div
+      className="app-shell flex h-dvh w-full bg-background text-foreground overflow-hidden"  // ← h-screen → h-dvh
+      data-sidebar-state={state}
+    >
       <Sidebar />
       <div className="flex flex-col flex-1 min-w-0">
-        <Navbar visitedIso2={visitedIso2} onFilterClick={handleFilterClick} />
+        <Navbar visitedIso2={visitedIso2} />
         <main className="flex-1 overflow-auto">
           <Outlet />
         </main>
       </div>
-      {/* All panels will use the CSS variable */}
       <PinDetailPanel />
       <AddPinPanel />
       <PreviewPanel />
       <SettingsPanel />
       <SavedPlacesPanel />
+      <AddCommentPanel />
       <CategoryManagerDialog />
 
       <Toaster
@@ -70,15 +106,13 @@ function AppLayoutContent() {
 
 const AppLayout = () => {
   return (
-    <AuthProvider>
-      <PinsProvider>
-        <CategoriesProvider>
-          <SidebarProvider defaultOpen={false}>
-            <AppLayoutContent />
-          </SidebarProvider>
-        </CategoriesProvider>
-      </PinsProvider>
-    </AuthProvider>
+    <PinsProvider>
+      <CategoriesProvider>
+        <SidebarProvider defaultOpen={false}>
+          <AppLayoutContent />
+        </SidebarProvider>
+      </CategoriesProvider>
+    </PinsProvider>
   )
 }
 

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react"
 import { useCountryPlaces } from "./useCountryPlaces"
 import { getCachedCountryList, getCachedPlaces, setCachedPlaces } from "@/lib/idb"
 import { fetchUnlockedCountries, fetchCountryPlaces } from "@/lib/api"
-import type { Place, UnlockedEntry } from "@/types/places"
+import type { Place, UnlockedEntry } from "@/types/place"
 
 export function useVisitedCountriesPlaces(iso2: string | null, unlocked: UnlockedEntry[]) {
   const { places: currentPlaces, status: countryStatus } = useCountryPlaces(iso2)

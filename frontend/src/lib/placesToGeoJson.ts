@@ -1,4 +1,4 @@
-import type { Place, UnlockedEntry } from "@/types/places"
+import type { Place, UnlockedEntry } from "@/types/place"
 
 export type PlaceState = "locked" | "opened" | "unlocked"
 

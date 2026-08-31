@@ -28,6 +28,8 @@ export const users = pgTable("users", {
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
   passwordHash: text("password_hash").notNull(),
+  profileImage: text("profile_image"),
+  bannerImage: text("banner_image"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 })
 
@@ -45,6 +47,7 @@ export const categories = pgTable("categories", {
   description: text("description").notNull(),
   mapboxCategory: text("mapbox_category"),
   mapboxCategoryConfidence: text("mapbox_category_confidence"),
+  icons: text("icons").array().notNull().default(sql`'{}'::text[]`),
 })
 
 // --- GEOGRAPHIC HIERARCHY (UNIFIED PLACES) ---
@@ -113,6 +116,7 @@ export const pins = pgTable("pins", {
   longitude: doublePrecision("longitude").notNull(),
   imageUrl: text("image_url"),
   saved: boolean("saved").default(false),
+  icons: text("icons").array().notNull().default(sql`'{}'::text[]`),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 })
@@ -148,6 +152,51 @@ export const recentlyVisited = pgTable(
   })
 )
 
+// --- COMMUNITY COMMENTS ---
+// Comments are community content: any logged-in user can write/vote, everyone
+// (guests included) can read. No guest ownership columns — guest sessions can
+// only view. Latitude/longitude are snapshots taken at creation so the Phase 2
+// widget can find the nearest comment-bearing location without re-resolving targets.
+export const comments = pgTable("comments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  body: text("body").notNull(),
+  parentId: uuid("parent_id").references((): AnyPgColumn => comments.id, {
+    onDelete: "cascade",
+  }),
+  targetType: text("target_type", { enum: ["pin", "location", "route"] }).notNull(),
+  pinId: uuid("pin_id").references(() => pins.id, { onDelete: "cascade" }),
+  placeId: uuid("place_id").references(() => places.id, { onDelete: "cascade" }),
+  routeStartPinId: uuid("route_start_pin_id").references(() => pins.id, { onDelete: "cascade" }),
+  routeEndPinId: uuid("route_end_pin_id").references(() => pins.id, { onDelete: "cascade" }),
+  authorUserId: uuid("author_user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+})
+
+export const commentVotes = pgTable(
+  "comment_votes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    commentId: uuid("comment_id")
+      .notNull()
+      .references(() => comments.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    value: integer("value").notNull(), // 1 (up) | -1 (down)
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqueVotePerUser: uniqueIndex("unique_vote_per_user").on(
+      table.commentId,
+      table.userId
+    ),
+  })
+)
+
 // ============================================
 // RELATIONS
 // ============================================
@@ -164,6 +213,7 @@ export const placesRelations = relations(places, ({ one, many }) => ({
   unlockedBy: many(unlockedPlaces),
   pins: many(pins),
   recentlyVisited: many(recentlyVisited),
+  comments: many(comments, { relationName: "comments_place_target" }),
 }))
 
 export const unlockedPlacesRelations = relations(unlockedPlaces, ({ one }) => ({
@@ -173,11 +223,14 @@ export const unlockedPlacesRelations = relations(unlockedPlaces, ({ one }) => ({
   pin: one(pins, { fields: [unlockedPlaces.pinId], references: [pins.id] }),
 }))
 
-export const pinsRelations = relations(pins, ({ one }) => ({
+export const pinsRelations = relations(pins, ({ one, many }) => ({
   user: one(users, { fields: [pins.userId], references: [users.id] }),
   guest: one(guests, { fields: [pins.guestId], references: [guests.id] }),
   category: one(categories, { fields: [pins.categoryId], references: [categories.id] }),
   place: one(places, { fields: [pins.placeId], references: [places.id] }),
+  comments: many(comments, { relationName: "comments_pin_target" }),
+  routeStartComments: many(comments, { relationName: "comments_route_start" }),
+  routeEndComments: many(comments, { relationName: "comments_route_end" }),
 }))
 
 export const categoriesRelations = relations(categories, ({ many }) => ({
@@ -189,6 +242,8 @@ export const usersRelations = relations(users, ({ many }) => ({
   unlockedPlaces: many(unlockedPlaces),
   pins: many(pins),
   recentlyVisited: many(recentlyVisited),
+  comments: many(comments),
+  commentVotes: many(commentVotes),
 }))
 
 export const guestsRelations = relations(guests, ({ many }) => ({
@@ -215,4 +270,40 @@ export const recentlyVisitedRelations = relations(recentlyVisited, ({ one }) => 
     fields: [recentlyVisited.pinId],
     references: [pins.id],
   }),
+}))
+
+export const commentsRelations = relations(comments, ({ one, many }) => ({
+  author: one(users, { fields: [comments.authorUserId], references: [users.id] }),
+  parent: one(comments, {
+    fields: [comments.parentId],
+    references: [comments.id],
+    relationName: "comment_thread",
+  }),
+  replies: many(comments, { relationName: "comment_thread" }),
+  votes: many(commentVotes),
+  pin: one(pins, {
+    fields: [comments.pinId],
+    references: [pins.id],
+    relationName: "comments_pin_target",
+  }),
+  place: one(places, {
+    fields: [comments.placeId],
+    references: [places.id],
+    relationName: "comments_place_target",
+  }),
+  routeStartPin: one(pins, {
+    fields: [comments.routeStartPinId],
+    references: [pins.id],
+    relationName: "comments_route_start",
+  }),
+  routeEndPin: one(pins, {
+    fields: [comments.routeEndPinId],
+    references: [pins.id],
+    relationName: "comments_route_end",
+  }),
+}))
+
+export const commentVotesRelations = relations(commentVotes, ({ one }) => ({
+  comment: one(comments, { fields: [commentVotes.commentId], references: [comments.id] }),
+  user: one(users, { fields: [commentVotes.userId], references: [users.id] }),
 }))

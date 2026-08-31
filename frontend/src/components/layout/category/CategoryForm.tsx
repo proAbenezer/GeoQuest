@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
+import { IconMultiSelect } from "@/components/ui/icon-multi-select"
 import { CheckCircle2, AlertCircle, Loader2 } from "lucide-react"
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000"
@@ -11,6 +12,8 @@ type Props = {
   setName: (v: string) => void
   description: string
   setDescription: (v: string) => void
+  icons: string[]
+  setIcons: (v: string[]) => void
   onSubmit: () => void
 }
 
@@ -24,6 +27,8 @@ const CategoryForm = ({
   setName,
   description,
   setDescription,
+  icons,
+  setIcons,
   onSubmit,
 }: Props) => {
   const [match, setMatch] = useState<MatchResult>(null)
@@ -113,6 +118,10 @@ const CategoryForm = ({
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Optional"
         />
+      </div>
+      <div className="space-y-2">
+        <Label>Icons</Label>
+        <IconMultiSelect value={icons} onChange={setIcons} />
       </div>
       <Button onClick={onSubmit} className="w-full">
         Add Category

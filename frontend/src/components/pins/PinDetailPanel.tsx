@@ -3,6 +3,7 @@ import { useState, useEffect } from "react"
 import {
   X,
   CheckCircle2,
+  CircleDashed,
   MapPin,
   Pencil,
   Trash2,
@@ -12,7 +13,6 @@ import {
   Loader2,
   User,
   Map,
-  Clock,
   Tag,
   FileText,
   Globe,
@@ -21,9 +21,14 @@ import {
 } from "lucide-react"
 import { usePins } from "@/context/usePins"
 import { useCategories } from "@/context/useCategories"
-import { getCategoryIcon } from "@/lib/categoryDisplay"
+import { getCategoryIcon, getIconList } from "@/lib/categoryDisplay"
 import { Button } from "@/components/ui/button"
+import { IconStack } from "@/components/ui/icon-stack"
+import { IconMultiSelect } from "@/components/ui/icon-multi-select"
 import { useImageUpload } from "@/hooks/useImageUpload"
+import { VISITED_RADIUS_M } from "@/hooks/useVisitedCheckin"
+import SidePanel from "@/components/layout/sidebar/SidePanel"
+import CommentSection from "@/components/comments/CommentSection"
 
 // Open-Meteo WMO weather codes
 function describeWeatherCode(code: number): string {
@@ -54,7 +59,7 @@ const PinDetailPanel = () => {
     pins,
   } = usePins()
   const { categories } = useCategories()
-  const { uploadImage, uploading: isUploadingImage, error: uploadError } = useImageUpload()
+  const { uploadImage, error: uploadError } = useImageUpload()
 
   // State for edit mode
   const [isEditing, setIsEditing] = useState(false)
@@ -68,6 +73,7 @@ const PinDetailPanel = () => {
   const [editDescription, setEditDescription] = useState("")
   const [editCategoryId, setEditCategoryId] = useState("")
   const [editImageUrl, setEditImageUrl] = useState<string | null>(null)
+  const [editIcons, setEditIcons] = useState<string[]>([])
 
   // Image upload state
   const [isImageUploading, setIsImageUploading] = useState(false)
@@ -88,6 +94,18 @@ const PinDetailPanel = () => {
       setSecondaryPanel({ type: "pinDetail", pin })
     }
   }, [pin, panelPin, setSecondaryPanel])
+
+  // Reset transient UI state whenever the open pin changes (or the panel
+  // closes). Without this, confirming a delete (or entering edit mode) on one
+  // pin leaks onto the next pin opened — e.g. pin A's "Delete this pin?"
+  // confirmation incorrectly appears on pin B.
+  useEffect(() => {
+    setConfirmingDelete(false)
+    setIsEditing(false)
+    setSaving(false)
+    setDeleting(false)
+    setEditError(null)
+  }, [pin?.id])
 
   // Fetch weather
   useEffect(() => {
@@ -129,13 +147,14 @@ const PinDetailPanel = () => {
       setEditDescription(pin.customDescription ?? "")
       setEditCategoryId(pin.categoryId)
       setEditImageUrl(pin.imageUrl ?? null)
+      setEditIcons(pin.icons ?? [])
     }
   }, [isEditing, pin?.id])
 
-  // Early return
+  // Early return – panel only renders when active
   if (secondaryPanel?.type !== "pinDetail") return null
 
-  const title = isPinDetail ? pin!.customName || pin!.name : secondaryPanel.placeName
+  const title = pin!.customName || pin!.name
   const category = isPinDetail ? categories.find((c) => c.id === pin!.categoryId) : null
 
   function formatDate(date: string | null | undefined) {
@@ -144,14 +163,6 @@ const PinDetailPanel = () => {
       year: "numeric",
       month: "long",
       day: "numeric",
-    })
-  }
-
-  function formatTime(date: string | null | undefined) {
-    if (!date) return "N/A"
-    return new Date(date).toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
     })
   }
 
@@ -172,6 +183,7 @@ const PinDetailPanel = () => {
     setEditDescription(pin.customDescription ?? "")
     setEditCategoryId(pin.categoryId)
     setEditImageUrl(pin.imageUrl ?? null)
+    setEditIcons(pin.icons ?? [])
     setEditError(null)
     setImageUploadError(null)
     setIsEditing(true)
@@ -229,7 +241,8 @@ const PinDetailPanel = () => {
         customName: editName.trim() || null,
         customDescription: editDescription.trim() || null,
         categoryId: editCategoryId,
-        imageUrl: editImageUrl || null,
+        imageUrl: editImageUrl ?? undefined,
+        icons: editIcons,
       })
       setSecondaryPanel({ type: "pinDetail", pin: updated })
       setIsEditing(false)
@@ -254,45 +267,39 @@ const PinDetailPanel = () => {
     }
   }
 
-  // ✅ The panel reads the CSS variable set by Sidebar.tsx
+  // ─── Use the shared SidePanel ──────────────────────────────
   return (
-    <div
-      className="fixed inset-y-0 z-50 w-96 overflow-y-auto bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-l shadow-xl transition-[left] duration-200"
-      style={{
-        left: 'var(--sidebar-width, 16rem)',
-        top: 0,
-        height: '100vh'
+    <SidePanel
+      widthClassName="w-96"
+      onOpenChange={(open) => {
+        if (!open) setSecondaryPanel(null)
       }}
     >
-      {/* HEADER */}
-      <div className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur px-4 py-3">
+      {/* HEADER – includes the X close button */}
+      <div className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <div className="flex items-start justify-between">
           <div className="min-w-0">
             {isPinDetail ? (
-              <>
-                <div className="flex items-center gap-2.5">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
-                    <MapPin className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-semibold truncate leading-tight">
-                      {pin!.customName || pin!.name}
-                    </h2>
-                    {pin!.customName && (
-                      <p className="text-sm text-muted-foreground truncate">
-                        {pin!.name}
-                      </p>
-                    )}
-                  </div>
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-sm shrink-0">
+                  <MapPin className="h-4 w-4" />
                 </div>
-              </>
+                <div>
+                  <h2 className="text-lg font-semibold truncate leading-tight">
+                    {pin!.customName || pin!.name}
+                  </h2>
+                  {pin!.customName && (
+                    <p className="text-sm text-muted-foreground truncate">{pin!.name}</p>
+                  )}
+                </div>
+              </div>
             ) : (
               <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-sm shrink-0">
                   <MapPin className="h-4 w-4" />
                 </div>
                 <h2 className="text-lg font-semibold truncate leading-tight">
-                  {secondaryPanel.placeName}
+                  {pin!.name}
                 </h2>
               </div>
             )}
@@ -302,23 +309,24 @@ const PinDetailPanel = () => {
               <>
                 <button
                   onClick={startEditing}
-                  className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  className="rounded-lg p-2.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   aria-label="Edit pin"
                 >
                   <Pencil className="h-4 w-4" />
                 </button>
                 <button
                   onClick={() => setConfirmingDelete(true)}
-                  className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                  className="rounded-lg p-2.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                   aria-label="Delete pin"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
               </>
             )}
+            {/* ✅ X button – closes the panel */}
             <button
               onClick={() => setSecondaryPanel(null)}
-              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="rounded-lg p-2.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               <X className="h-5 w-5" />
             </button>
@@ -330,20 +338,10 @@ const PinDetailPanel = () => {
         <div className="mx-3 mt-3 rounded-xl border border-destructive/20 bg-destructive/10 p-4">
           <p className="text-sm text-destructive font-medium">Delete this pin? This can't be undone.</p>
           <div className="mt-3 flex gap-2">
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={() => setConfirmingDelete(false)}
-              disabled={deleting}
-            >
+            <Button variant="outline" className="flex-1" onClick={() => setConfirmingDelete(false)} disabled={deleting}>
               Cancel
             </Button>
-            <Button
-              variant="destructive"
-              className="flex-1"
-              onClick={handleDelete}
-              disabled={deleting}
-            >
+            <Button variant="destructive" className="flex-1" onClick={handleDelete} disabled={deleting}>
               {deleting ? "Deleting…" : "Delete"}
             </Button>
           </div>
@@ -375,9 +373,7 @@ const PinDetailPanel = () => {
                 onChange={(e) => setEditCategoryId(e.target.value)}
               >
                 {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
+                  <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
             </div>
@@ -396,27 +392,30 @@ const PinDetailPanel = () => {
 
             <div>
               <label className="mb-1.5 block text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                Icons
+              </label>
+              <IconMultiSelect value={editIcons} onChange={setEditIcons} />
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                 Image
               </label>
               <div className="space-y-2">
                 {editImageUrl ? (
                   <div className="relative rounded-md border overflow-hidden group">
-                    <img
-                      src={editImageUrl}
-                      alt="Pin"
-                      className="w-full h-32 object-cover"
-                    />
+                    <img src={editImageUrl} alt="Pin" className="w-full h-32 object-cover" />
                     <button
                       type="button"
                       onClick={handleRemoveImage}
-                      className="absolute top-2 right-2 rounded-full bg-black/50 p-1.5 text-white hover:bg-black/70 transition-colors"
+                      className="absolute top-2 right-2 rounded-full bg-black/50 p-1.5 text-white hover:bg-black/70"
                     >
                       <X className="h-4 w-4" />
                     </button>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-center rounded-md border-2 border-dashed border-muted-foreground/25 p-4 hover:border-muted-foreground/50 transition-colors">
-                    <label className="flex cursor-pointer flex-col items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  <div className="flex items-center justify-center rounded-md border-2 border-dashed border-muted-foreground/25 p-4 hover:border-muted-foreground/50">
+                    <label className="flex cursor-pointer flex-col items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
                       <Upload className="h-6 w-6" />
                       <span>Click to upload image</span>
                       <span className="text-xs">PNG, JPG, GIF up to 5MB</span>
@@ -436,12 +435,8 @@ const PinDetailPanel = () => {
                     Uploading image...
                   </div>
                 )}
-                {imageUploadError && (
-                  <p className="text-sm text-destructive">{imageUploadError}</p>
-                )}
-                {uploadError && (
-                  <p className="text-sm text-destructive">{uploadError}</p>
-                )}
+                {imageUploadError && <p className="text-sm text-destructive">{imageUploadError}</p>}
+                {uploadError && <p className="text-sm text-destructive">{uploadError}</p>}
               </div>
             </div>
           </div>
@@ -449,19 +444,10 @@ const PinDetailPanel = () => {
           {editError && <p className="text-sm text-destructive">{editError}</p>}
 
           <div className="flex gap-3">
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={cancelEditing}
-              disabled={saving || isImageUploading}
-            >
+            <Button variant="outline" className="flex-1" onClick={cancelEditing} disabled={saving || isImageUploading}>
               Cancel
             </Button>
-            <Button
-              className="flex-1"
-              onClick={handleSaveEdit}
-              disabled={saving || isImageUploading}
-            >
+            <Button className="flex-1" onClick={handleSaveEdit} disabled={saving || isImageUploading}>
               {saving ? "Saving…" : "Save"}
             </Button>
           </div>
@@ -471,11 +457,7 @@ const PinDetailPanel = () => {
           {/* Image */}
           <div className="aspect-video w-full rounded-xl overflow-hidden bg-muted">
             {pin!.imageUrl ? (
-              <img
-                src={pin!.imageUrl}
-                alt={title}
-                className="h-full w-full object-cover"
-              />
+              <img src={pin!.imageUrl} alt={title} className="h-full w-full object-cover" />
             ) : (
               <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-muted-foreground">
                 <ImageIcon className="h-12 w-12 opacity-20" />
@@ -484,19 +466,45 @@ const PinDetailPanel = () => {
             )}
           </div>
 
-          {/* Tags */}
-          <div className="flex items-center justify-end gap-2">
+          {/* Tags – icon cluster + category pill + visited tag */}
+          <div className="flex items-center justify-end gap-2 flex-wrap">
+            {pin!.icons && pin!.icons.length > 0 && (
+              <IconStack
+                icons={getIconList(pin!.icons, getCategoryIcon(pin!.categoryId))}
+                size="h-4 w-4"
+                max={3}
+                className="text-primary"
+              />
+            )}
             <div className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary">
-              {(() => {
-                const CategoryIcon = getCategoryIcon(pin!.categoryId)
-                return <CategoryIcon className="h-4 w-4" />
-              })()}
+              <IconStack
+                icons={
+                  category
+                    ? getIconList(category.icons, getCategoryIcon(category.id))
+                    : [getCategoryIcon(pin!.categoryId)]
+                }
+                size="h-3.5 w-3.5"
+                max={2}
+              />
               {category?.name ?? "Uncategorized"}
             </div>
-            {pin!.visited && (
-              <div className="inline-flex items-center gap-1.5 rounded-full bg-[#D97B29]/15 px-3 py-1.5 text-sm font-medium text-[#D97B29]">
+            {/* Visited tag – GPS check-in driven. Always shown so the user can
+                tell whether they've physically been near this pin yet. */}
+            {pin!.visited ? (
+              <div
+                className="inline-flex items-center gap-1.5 rounded-full bg-[#D97B29]/15 px-3 py-1.5 text-sm font-medium text-[#D97B29]"
+                title="You've been near this pin (GPS check-in)"
+              >
                 <CheckCircle2 className="h-4 w-4" />
                 Visited
+              </div>
+            ) : (
+              <div
+                className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1.5 text-sm font-medium text-muted-foreground"
+                title={`Not yet — visit within ${VISITED_RADIUS_M}m and it will mark itself`}
+              >
+                <CircleDashed className="h-4 w-4" />
+                Not visited yet
               </div>
             )}
           </div>
@@ -514,9 +522,7 @@ const PinDetailPanel = () => {
                     <Tag className="h-3 w-3" />
                     <span>Your Label</span>
                   </div>
-                  <p className="text-sm font-medium text-foreground pl-5">
-                    {pin!.customName}
-                  </p>
+                  <p className="text-sm font-medium text-foreground pl-5">{pin!.customName}</p>
                 </div>
               )}
               {pin!.customDescription && (
@@ -525,9 +531,7 @@ const PinDetailPanel = () => {
                     <FileText className="h-3 w-3" />
                     <span>Your Notes</span>
                   </div>
-                  <p className="text-sm text-foreground pl-5 whitespace-pre-wrap leading-relaxed">
-                    {pin!.customDescription}
-                  </p>
+                  <p className="text-sm text-foreground pl-5 whitespace-pre-wrap leading-relaxed">{pin!.customDescription}</p>
                 </div>
               )}
               {pin!.visited && pin!.visitDate && (
@@ -536,9 +540,7 @@ const PinDetailPanel = () => {
                     <Calendar className="h-3 w-3" />
                     <span>Visited On</span>
                   </div>
-                  <p className="text-sm text-foreground pl-5">
-                    {formatDate(pin!.visitDate)}
-                  </p>
+                  <p className="text-sm text-foreground pl-5">{formatDate(pin!.visitDate)}</p>
                 </div>
               )}
             </div>
@@ -556,39 +558,24 @@ const PinDetailPanel = () => {
                   <Globe className="h-3 w-3" />
                   <span>Official Name</span>
                 </div>
-                <p className="text-sm font-medium text-foreground pl-5">
-                  {pin!.name}
-                </p>
+                <p className="text-sm font-medium text-foreground pl-5">{pin!.name}</p>
               </div>
               <div className="space-y-0.5">
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <MapPin className="h-3 w-3" />
                   <span>Address</span>
                 </div>
-                <p className="text-sm text-foreground pl-5 leading-relaxed">
-                  {pin!.description}
-                </p>
+                <p className="text-sm text-foreground pl-5 leading-relaxed">{pin!.description}</p>
               </div>
               <div className="space-y-0.5">
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Compass className="h-3 w-3" />
                   <span>Coordinates</span>
                 </div>
-                <p className="text-sm font-mono text-foreground pl-5">
-                  {pin!.latitude.toFixed(6)}, {pin!.longitude.toFixed(6)}
+                <p className="text-sm font-mono text-foreground pl-5 break-all">
+                  {pin!.latitude.toFixed(4)}, {pin!.longitude.toFixed(4)}
                 </p>
               </div>
-              {pin!.lastAccessedAt && (
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Clock className="h-3 w-3" />
-                    <span>Last Accessed</span>
-                  </div>
-                  <p className="text-sm text-foreground pl-5">
-                    {formatDate(pin!.lastAccessedAt)} at {formatTime(pin!.lastAccessedAt)}
-                  </p>
-                </div>
-              )}
             </div>
           </div>
 
@@ -601,12 +588,8 @@ const PinDetailPanel = () => {
             <div className="pl-5">
               {weather ? (
                 <div className="flex items-center gap-3">
-                  <span className="text-2xl font-bold">
-                    {Math.round(weather.temperatureC)}°
-                  </span>
-                  <span className="text-sm text-muted-foreground">
-                    {weather.description}
-                  </span>
+                  <span className="text-2xl font-bold">{Math.round(weather.temperatureC)}°</span>
+                  <span className="text-sm text-muted-foreground">{weather.description}</span>
                 </div>
               ) : weatherError ? (
                 <p className="text-sm text-muted-foreground">{weatherError}</p>
@@ -615,6 +598,16 @@ const PinDetailPanel = () => {
               )}
             </div>
           </div>
+
+          {/* Community comments */}
+          <CommentSection
+            target={{
+              type: "pin",
+              pinId: pin!.id,
+              latitude: pin!.latitude,
+              longitude: pin!.longitude,
+            }}
+          />
         </div>
       ) : (
         // Preview mode (not pinned yet)
@@ -626,19 +619,13 @@ const PinDetailPanel = () => {
             </span>
           </div>
           <div className="rounded-xl border bg-card/50 p-3">
-            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Address
-            </h3>
-            <p className="text-sm leading-relaxed text-foreground">
-              {secondaryPanel.address}
-            </p>
+            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Address</h3>
+            <p className="text-sm leading-relaxed text-foreground">{pin!.description}</p>
           </div>
-          <Button onClick={handleAddToPins} className="w-full">
-            Add to Pins
-          </Button>
+          <Button onClick={handleAddToPins} className="w-full">Add to Pins</Button>
         </div>
       )}
-    </div>
+    </SidePanel>
   )
 }
 

@@ -3,7 +3,7 @@ import { Label } from "@/components/ui/label"
 import type { Suggestion } from "@/types/location"
 
 type Props = {
-  containerRef: React.RefObject<HTMLDivElement>
+  containerRef: React.RefObject<HTMLDivElement | null>
   searchQuery: string
   suggestions: Suggestion[]
   showSuggestions: boolean

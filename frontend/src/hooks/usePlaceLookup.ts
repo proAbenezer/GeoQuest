@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react"
 import * as turf from "@turf/turf"
 import { getCachedCountryList, getCachedPlaces } from "@/lib/idb"
 import { useUnlockedPlaces } from "./useUnlockedPlaces"
-import type { Place } from "@/types/places"
+import type { Place } from "@/types/place"
 
 // Loads every place ever cached locally (across all visited countries) and
 // exposes a way to check "what place is at this point, and is it unlocked."

@@ -21,14 +21,16 @@ const CategoryManagerDialog = () => {
   const { pins } = usePins()
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
+  const [icons, setIcons] = useState<string[]>([])
   const [errorId, setErrorId] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState("")
 
   function handleAdd() {
     if (!name.trim()) return
-    addCategory({ name: name.trim(), description: description.trim() })
+    addCategory({ name: name.trim(), description: description.trim(), icons })
     setName("")
     setDescription("")
+    setIcons([])
   }
 
   function handleDelete(id: string) {
@@ -52,6 +54,8 @@ const CategoryManagerDialog = () => {
           setName={setName}
           description={description}
           setDescription={setDescription}
+          icons={icons}
+          setIcons={setIcons}
           onSubmit={handleAdd}
         />
         <div className="rounded-md border">

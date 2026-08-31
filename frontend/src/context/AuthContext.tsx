@@ -4,6 +4,7 @@ import {
   login as loginApi,
   signup as signupApi,
   logout as logoutApi,
+  updateProfile as updateProfileApi, // new
 } from "@/api/auth"
 
 type User = {
@@ -12,6 +13,8 @@ type User = {
   username: string
   firstName: string
   lastName: string
+  profileImage?: string  // added
+  bannerImage?: string   // added
 }
 
 interface AuthContextType {
@@ -26,6 +29,8 @@ interface AuthContextType {
     password: string
   ) => Promise<void>
   logout: () => Promise<void>
+  refreshUser: () => Promise<void>      // new
+  updateProfile: (data: Partial<User>) => Promise<void> // new
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -64,8 +69,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null)
   }
 
+  async function refreshUser() {
+    const user = await getMe()
+    setUser(user)
+  }
+
+  // NEW: update profile and update state
+  async function updateProfile(data: Partial<User>) {
+    const updated = await updateProfileApi(data)
+    setUser(updated)
+  }
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        login,
+        signup,
+        logout,
+        refreshUser,
+        updateProfile,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   )

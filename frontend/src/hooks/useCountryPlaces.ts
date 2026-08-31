@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { fetchCountryPlaces } from "@/lib/api"
 import { getCachedPlaces, setCachedPlaces } from "@/lib/idb"
-import type { Place, CountryFetchStatus } from "@/types/places"
+import type { Place, CountryFetchStatus } from "@/types/place"
 
 const POLL_INTERVAL_MS = 3000
 

@@ -1,6 +1,7 @@
-import { useState } from "react"
+import { useState, type FormEvent } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { MapPin } from "lucide-react"
+import { useAuth } from "@/context/AuthContext"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -15,20 +16,21 @@ import {
 
 const LoginPage = () => {
   const navigate = useNavigate()
+  const { login } = useAuth()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setError("")
     setIsLoading(true)
     try {
-      // await login(email, password)
+      await login(email, password)
       navigate("/")
     } catch (err) {
-      setError(err.message ?? "Failed to log in. Please try again.")
+      setError(err instanceof Error ? err.message : "Failed to log in. Please try again.")
     } finally {
       setIsLoading(false)
     }

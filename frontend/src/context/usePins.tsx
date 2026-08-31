@@ -20,6 +20,7 @@ type SecondaryPanel =
   | { type: "settings" }
   | { type: "addPin"; recentlyVisitedId?: string }
   | { type: "savedPlaces" }
+  | { type: "addComment" }
   | null
 
 type ListPanel =
@@ -37,6 +38,10 @@ type PrefillLocation = {
 } | null
 
 type FlyToTarget = { latitude: number; longitude: number } | null
+
+// Phase 2: the map viewport center, updated on pan/zoom. Feeds the top-comment
+// widget's "nearest location" query.
+type ViewportCenter = { latitude: number; longitude: number } | null
 
 type PinVisibility = "all" | "pinned" | "unpinned"
 
@@ -67,18 +72,27 @@ interface PinsContextValue {
   prefillLocation: PrefillLocation
   setPrefillLocation: (location: PrefillLocation) => void
   toggleSaved: (id: string) => Promise<void>
+  isManagingSaved: boolean
+  setIsManagingSaved: (open: boolean) => void
   flyToTarget: FlyToTarget
   setFlyToTarget: (target: FlyToTarget) => void
   highlightedPinId: string | null
   setHighlightedPinId: (id: string | null) => void
+
+  // Single-sidebar-open coordination: the filter panel and the comment view are
+  // overlay sidebars tracked outside `secondaryPanel`; these coordinate all
+  // three so only one is open at a time.
+  filterPanelOpen: boolean
+  openFilterPanel: (open: boolean) => void
+  commentViewOpen: boolean
+  openCommentView: (open: boolean) => void
 
   // Filter & viewport
   activeCategoryIds: string[]
   toggleCategoryFilter: (categoryId: string) => void
   filteredPins: Pin[]
   temporaryPois: TemporaryPoi[]
-  setTemporaryPois: (pois: TemporaryPoi[]) => void
-  // NEW signature: accepts array of { id, mapboxCategory }
+  setTemporaryPois: (pois: TemporaryPoi[]) => void  // NEW signature: accepts array of { id, mapboxCategory }
   fetchNearbyPois: (
     categories: { id: string; mapboxCategory: string }[],
     bounds: [number, number, number, number]
@@ -88,6 +102,9 @@ interface PinsContextValue {
   setMapBounds: (bounds: [number, number, number, number] | null) => void
   pinVisibility: PinVisibility
   setPinVisibility: (mode: PinVisibility) => void
+  // Phase 2: viewport center for the top-comment widget
+  viewportCenter: ViewportCenter
+  setViewportCenter: (center: ViewportCenter) => void
 }
 
 const PinsContext = createContext<PinsContextValue | undefined>(undefined)
@@ -96,17 +113,52 @@ export function PinsProvider({ children }: { children: ReactNode }) {
   // ---- Existing state ----
   const [pins, setPins] = useState<Pin[]>([])
   const [loading, setLoading] = useState(true)
-  const [secondaryPanel, setSecondaryPanel] = useState<SecondaryPanel>(null)
+  const [secondaryPanel, _setSecondaryPanel] = useState<SecondaryPanel>(null)
   const [listPanel, setListPanel] = useState<ListPanel>(null)
   const [prefillLocation, setPrefillLocation] = useState<PrefillLocation>(null)
+  const [isManagingSaved, setIsManagingSaved] = useState(false)
   const [flyToTarget, setFlyToTarget] = useState<FlyToTarget>(null)
   const [highlightedPinId, setHighlightedPinId] = useState<string | null>(null)
+
+  // ---- Overlay sidebars tracked outside `secondaryPanel`, coordinated below
+  // so only one overlay sidebar is open at a time. ----
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false)
+  const [commentViewOpen, setCommentViewOpen] = useState(false)
+
+  // Public setter for the secondary (right-side) panel. Opening a panel closes
+  // the filter panel and the comment view; closing one never reopens another.
+  const setSecondaryPanel = useCallback((panel: SecondaryPanel) => {
+    _setSecondaryPanel(panel)
+    if (panel) {
+      setFilterPanelOpen(false)
+      setCommentViewOpen(false)
+    }
+  }, [])
+
+  // Opening the filter panel closes the secondary panel and comment view.
+  const openFilterPanel = useCallback((open: boolean) => {
+    setFilterPanelOpen(open)
+    if (open) {
+      _setSecondaryPanel(null)
+      setCommentViewOpen(false)
+    }
+  }, [])
+
+  // Opening the comment view closes the secondary panel and filter panel.
+  const openCommentView = useCallback((open: boolean) => {
+    setCommentViewOpen(open)
+    if (open) {
+      _setSecondaryPanel(null)
+      setFilterPanelOpen(false)
+    }
+  }, [])
 
   // ---- Filter state ----
   const [activeCategoryIds, setActiveCategoryIds] = useState<string[]>([])
   const [temporaryPois, setTemporaryPois] = useState<TemporaryPoi[]>([])
   const [mapBounds, setMapBounds] = useState<[number, number, number, number] | null>(null)
   const [pinVisibility, setPinVisibility] = useState<PinVisibility>("all")
+  const [viewportCenter, setViewportCenter] = useState<ViewportCenter>(null)
 
   // ---- Helper: bounds check ----
   const isInBounds = useCallback(
@@ -284,10 +336,17 @@ export function PinsProvider({ children }: { children: ReactNode }) {
     prefillLocation,
     setPrefillLocation,
     toggleSaved,
+    isManagingSaved,
+    setIsManagingSaved,
     flyToTarget,
     setFlyToTarget,
     highlightedPinId,
     setHighlightedPinId,
+    // Single-sidebar-open coordination
+    filterPanelOpen,
+    openFilterPanel,
+    commentViewOpen,
+    openCommentView,
     // Filter
     activeCategoryIds,
     toggleCategoryFilter,
@@ -300,6 +359,8 @@ export function PinsProvider({ children }: { children: ReactNode }) {
     setMapBounds,
     pinVisibility,
     setPinVisibility,
+    viewportCenter,
+    setViewportCenter,
   }
 
   return <PinsContext.Provider value={value}>{children}</PinsContext.Provider>

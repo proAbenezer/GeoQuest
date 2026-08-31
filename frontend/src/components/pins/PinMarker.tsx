@@ -3,18 +3,12 @@ import { useState } from "react"
 import { MapPin, CheckCircle2 } from "lucide-react"
 import { Marker } from "react-map-gl/mapbox"
 import { usePins } from "@/context/usePins"
+import { IconStack } from "@/components/ui/icon-stack"
+import { getIconList, getCategoryIcon } from "@/lib/categoryDisplay"
+import type { Pin } from "@/types"
 
 interface PinMarkerProps {
-  pin: {
-    id: string
-    name: string
-    customName?: string | null
-    latitude: number
-    longitude: number
-    visited: boolean
-    imageUrl?: string | null
-    categoryId?: string | null
-  }
+  pin: Pin
   zoom: number
 }
 
@@ -78,21 +72,33 @@ const PinMarker = ({ pin, zoom }: PinMarkerProps) => {
             strokeWidth={2.5}
             className={`
               transition-all duration-200 drop-shadow-lg
-              ${isHighlighted 
-                ? "text-[#D97B29] filter drop-shadow-[0_0_8px_rgba(217,123,41,0.5)]" 
-                : pin.visited 
-                  ? "text-white" 
+              ${isHighlighted
+                ? "text-[#D97B29] filter drop-shadow-[0_0_8px_rgba(217,123,41,0.5)]"
+                : pin.visited
+                  ? "text-white"
                   : "text-white/40"
               }
             `}
             fill={pin.visited ? "#D97B29" : "none"}
           />
-          
+
           {/* Small indicator dot for pins with images */}
           {hasImage && (
             <div className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-green-400 ring-2 ring-background animate-pulse" />
           )}
         </div>
+
+        {/* Icon cluster for pins with icons */}
+        {pin.icons && pin.icons.length > 0 && (
+          <div className="absolute -top-6 left-1/2 -translate-x-1/2 flex justify-center">
+            <IconStack
+              icons={getIconList(pin.icons, getCategoryIcon(pin.categoryId))}
+              size="h-3.5 w-3.5"
+              max={3}
+              className="text-primary"
+            />
+          </div>
+        )}
 
         {/* ✅ BIGGER SNAPCHAT-STYLE IMAGE PREVIEW ON HOVER */}
         {showImagePreview && (
