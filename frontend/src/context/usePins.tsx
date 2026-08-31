@@ -5,7 +5,6 @@ import {
   useState,
   useEffect,
   useCallback,
-  useMemo,
   type ReactNode,
 } from "react"
 import type { Pin } from "@/types"
@@ -90,7 +89,6 @@ interface PinsContextValue {
   // Filter & viewport
   activeCategoryIds: string[]
   toggleCategoryFilter: (categoryId: string) => void
-  filteredPins: Pin[]
   temporaryPois: TemporaryPoi[]
   setTemporaryPois: (pois: TemporaryPoi[]) => void  // NEW signature: accepts array of { id, mapboxCategory }
   fetchNearbyPois: (
@@ -160,16 +158,6 @@ export function PinsProvider({ children }: { children: ReactNode }) {
   const [pinVisibility, setPinVisibility] = useState<PinVisibility>("all")
   const [viewportCenter, setViewportCenter] = useState<ViewportCenter>(null)
 
-  // ---- Helper: bounds check ----
-  const isInBounds = useCallback(
-    (lat: number, lng: number, bounds: [number, number, number, number] | null) => {
-      if (!bounds) return true
-      const [minLng, minLat, maxLng, maxLat] = bounds
-      return lng >= minLng && lng <= maxLng && lat >= minLat && lat <= maxLat
-    },
-    []
-  )
-
   // ---- Toggle category filter ----
   const toggleCategoryFilter = useCallback((categoryId: string) => {
     setActiveCategoryIds((prev) =>
@@ -184,16 +172,6 @@ export function PinsProvider({ children }: { children: ReactNode }) {
     setActiveCategoryIds([])
     setTemporaryPois([])
   }, [])
-
-  // ---- Filtered pins (saved) ----
-  const filteredPins = useMemo(() => {
-    if (activeCategoryIds.length === 0) return pins
-    return pins.filter(
-      (pin) =>
-        activeCategoryIds.includes(pin.categoryId) &&
-        isInBounds(pin.latitude, pin.longitude, mapBounds)
-    )
-  }, [pins, activeCategoryIds, mapBounds, isInBounds])
 
   // ---- Load pins ----
   async function loadPins() {
@@ -350,7 +328,6 @@ export function PinsProvider({ children }: { children: ReactNode }) {
     // Filter
     activeCategoryIds,
     toggleCategoryFilter,
-    filteredPins,
     temporaryPois,
     setTemporaryPois,
     fetchNearbyPois,
