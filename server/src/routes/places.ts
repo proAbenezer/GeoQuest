@@ -3,7 +3,7 @@ import { Router } from "express"
 import { z } from "zod"
 import { eq, and, isNull, sql, inArray } from "drizzle-orm"
 import { db } from "../db/index.js"
-import { places, countryFetchStatus, unlockedPlaces, placeExploration } from "../db/schema.js"
+import { places, countryFetchStatus, unlockedPlaces, placeExploration, travelStats } from "../db/schema.js"
 import { optionalAuth } from "../middleware/auth.js"
 import { ensureGuestSession } from "../middleware/guest.js" // match your actual filename
 import { fetchCountryBoundaries } from "../services/fetchCountryBoundaries.js"
@@ -207,6 +207,76 @@ async function refreshAncestors(leafPlaceId: string, owner: Owner): Promise<void
   }
 }
 
+// Local calendar day (YYYYMMDD int) for a UTC instant, given the traveler's
+// offset from UTC in minutes. Folding the offset in BEFORE reading the UTC
+// getters computes the correct wall-clock date in that offset's timezone
+// regardless of the server's own timezone (a JS Date's local getters would use
+// the server's tz instead).
+function localDayFromUtc(utcMs: number, offsetMinutes: number): number {
+  const d = new Date(utcMs + offsetMinutes * 60000)
+  return d.getUTCFullYear() * 10000 + (d.getUTCMonth() + 1) * 100 + d.getUTCDate()
+}
+
+// Incremental materialized-summary update (travel_stats) after a check-in.
+// Runs at write time so GET /stats never scans the raw check-in log. The local
+// day is added on ANY check-in (a re-unlock on a new day is still a day of
+// presence); placesCount grows only on a FRESH unlock. First/last visit track
+// the min/max timestamps. Best-effort — callers must not fail the unlock.
+async function updateTravelStats(
+  placeId: string,
+  alreadyUnlocked: boolean,
+  offsetMinutes: number,
+  owner: Owner
+): Promise<void> {
+  const [leaf] = await db
+    .select({ countryCode: places.countryCode })
+    .from(places)
+    .where(eq(places.id, placeId))
+  if (!leaf) return
+
+  const [root] = await db
+    .select({ name: places.name })
+    .from(places)
+    .where(and(eq(places.countryCode, leaf.countryCode), isNull(places.parentId)))
+    .limit(1)
+  const countryName = root?.name ?? leaf.countryCode
+
+  const rowFilter = and(
+    owner.userId ? eq(travelStats.userId, owner.userId) : eq(travelStats.guestId, owner.guestId!),
+    eq(travelStats.countryCode, leaf.countryCode)
+  )
+  const [existing] = await db.select().from(travelStats).where(rowFilter).limit(1)
+
+  const now = new Date()
+  const day = localDayFromUtc(now.getTime(), offsetMinutes)
+  const days = new Set(existing?.days ?? [])
+  days.add(day)
+
+  const firstVisitAt = existing?.firstVisitAt
+    ? new Date(Math.min(new Date(existing.firstVisitAt).getTime(), now.getTime()))
+    : now
+
+  const values = {
+    userId: owner.userId ?? null,
+    guestId: owner.userId ? null : (owner.guestId ?? null),
+    countryCode: leaf.countryCode,
+    countryName,
+    placesCount: (existing?.placesCount ?? 0) + (alreadyUnlocked ? 0 : 1),
+    days: Array.from(days).sort((a, b) => a - b),
+    firstVisitAt,
+    lastVisitAt: now,
+  }
+
+  if (existing) {
+    await db
+      .update(travelStats)
+      .set({ ...values, updatedAt: new Date() })
+      .where(eq(travelStats.id, existing.id))
+  } else {
+    await db.insert(travelStats).values(values)
+  }
+}
+
 async function recomputeAndPersistCountry(countryCode: string, owner: Owner) {
   const nodes = await computeCountryExploration(countryCode, owner)
   for (const node of nodes.values()) {
@@ -268,6 +338,10 @@ const unlockSchema = z.object({
   placeId: z.string().uuid(),
   latitude: z.number(),
   longitude: z.number(),
+  // Minutes to ADD to UTC to get the traveler's local time (east positive),
+  // sent by the client as -getTimezoneOffset(). Buckets "distinct calendar
+  // days" in the traveler's own timezone. Defaults to 0 (UTC) when absent.
+  timezoneOffsetMinutes: z.number().int().min(-840).max(840).optional().default(0),
 })
 
 router.post("/unlock", async (req, res) => {
@@ -275,7 +349,7 @@ router.post("/unlock", async (req, res) => {
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0].message })
   }
-  const { placeId, latitude, longitude } = parsed.data
+  const { placeId, latitude, longitude, timezoneOffsetMinutes } = parsed.data
 
   const [target] = await db
     .select({ id: places.id })
@@ -315,10 +389,12 @@ router.post("/unlock", async (req, res) => {
       placeId,
       userId: req.userId ?? null,
       guestId: req.userId ? null : req.guestId,
+      timezoneOffsetMinutes,
     })
     .onConflictDoNothing() // unique guards handle the "already unlocked" case silently
     .returning()
 
+  const alreadyUnlocked = !unlock
   res.status(201).json({ unlock: unlock ?? { placeId, alreadyUnlocked: true } })
 
   // Refresh the exploration roll-up along the leaf's ancestor chain only
@@ -331,6 +407,15 @@ router.post("/unlock", async (req, res) => {
     await refreshAncestors(placeId, owner)
   } catch (err) {
     console.error("Failed to refresh exploration after unlock:", err)
+  }
+
+  // Incrementally update the materialized travel summary (travel_stats) so the
+  // stats dashboard never scans the raw check-in log. Also best-effort.
+  try {
+    const owner: Owner = { userId: req.userId, guestId: req.userId ? undefined : req.guestId }
+    await updateTravelStats(placeId, alreadyUnlocked, timezoneOffsetMinutes, owner)
+  } catch (err) {
+    console.error("Failed to update travel stats after unlock:", err)
   }
 })
 

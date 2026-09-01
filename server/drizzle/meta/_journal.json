@@ -78,6 +78,13 @@
       "when": 1788181796970,
       "tag": "0010_flat_boom_boom",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788254192892,
+      "tag": "0011_bright_red_ghost",
+      "breakpoints": true
     }
   ]
 }

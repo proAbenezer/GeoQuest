@@ -88,6 +88,11 @@ export const unlockedPlaces = pgTable(
     userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
     guestId: uuid("guest_id").references(() => guests.id, { onDelete: "cascade" }),
     unlockedAt: timestamp("unlocked_at").notNull().defaultNow(),
+    // Minutes to ADD to UTC to get the traveler's local time at check-in (east
+    // positive: Ethiopia = +180). Sent by the client (JS getTimezoneOffset(),
+    // negated) and drives the "distinct calendar day" buckets in travel_stats.
+    // Null for legacy rows → treated as 0 (UTC).
+    timezoneOffsetMinutes: integer("timezone_offset_minutes"),
     lastAccessedAt: timestamp("last_accessed_at").notNull().defaultNow(),
     isPinned: boolean("is_pinned").default(false),
     pinId: uuid("pin_id").references(() => pins.id, { onDelete: "set null" }),
@@ -129,6 +134,37 @@ export const placeExploration = pgTable(
       .where(sql`${table.userId} IS NOT NULL`),
     uniqueGuestExploration: uniqueIndex("unique_guest_exploration")
       .on(table.placeId, table.guestId)
+      .where(sql`${table.guestId} IS NOT NULL`),
+  })
+)
+
+// --- TRAVEL STATS (materialized per-user summary, updated incrementally) ---
+// One row per identity × country, updated at write time on each check-in
+// (POST /places/unlock) — the dashboard reads ONLY these rows, never the raw
+// check-in log. `days` holds the distinct LOCAL calendar days (YYYYMMDD ints)
+// that had a check-in; country attribution comes from the places hierarchy via
+// the leaf's countryCode + root name. Legacy identities with unlocks but no
+// rows are backfilled lazily on first GET /stats.
+export const travelStats = pgTable(
+  "travel_stats",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+    guestId: uuid("guest_id").references(() => guests.id, { onDelete: "cascade" }),
+    countryCode: text("country_code").notNull(),
+    countryName: text("country_name").notNull(),
+    placesCount: integer("places_count").notNull().default(0),
+    days: integer("days").array().notNull().default(sql`'{}'::integer[]`),
+    firstVisitAt: timestamp("first_visit_at"),
+    lastVisitAt: timestamp("last_visit_at"),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqueUserCountry: uniqueIndex("unique_user_country")
+      .on(table.userId, table.countryCode)
+      .where(sql`${table.userId} IS NOT NULL`),
+    uniqueGuestCountry: uniqueIndex("unique_guest_country")
+      .on(table.countryCode, table.guestId)
       .where(sql`${table.guestId} IS NOT NULL`),
   })
 )
