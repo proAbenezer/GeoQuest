@@ -13,15 +13,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   Search,
   SlidersHorizontal,
-  Compass,
-  Dumbbell,
-  Building2,
   X,
   Loader2,
   MapPin,
   Shield,
   Menu, // ✅ added Menu icon
-  type LucideIcon,
 } from "lucide-react"
 import { useAuth } from "@/context/AuthContext"
 import { useState, useRef, useEffect, useCallback } from "react"
@@ -31,17 +27,11 @@ import { usePanelManager } from "@/hooks/usePanelManager"
 import { notifyLocked } from "@/lib/notify"
 import FilterPanel from "@/components/filter/FilterPanel"
 import { useSidebar } from "@/components/ui/sidebar" // ✅ added for mobile toggle
+import { getCategoryIcon, getIconList } from "@/lib/categoryDisplay"
+import { IconStack } from "@/components/ui/icon-stack"
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 
-// Map category names to icons
-const categoryIconMap: Record<string, LucideIcon> = {
-  "Anime Conventions": Compass,
-  "Gyms": Dumbbell,
-  "Tech Companies": Building2,
-}
-
-const DefaultIcon = MapPin
 const VISIBLE_CATEGORY_COUNT = 3
 
 interface SearchResult {
@@ -254,10 +244,6 @@ const Navbar = ({ visitedIso2 = new Set() }: NavbarProps) => {
     }
   }
 
-  const getIcon = (name: string): LucideIcon => {
-    return categoryIconMap[name] || DefaultIcon
-  }
-
   const visibleCategories = categories?.slice(0, VISIBLE_CATEGORY_COUNT) ?? []
 
   return (
@@ -427,7 +413,6 @@ const Navbar = ({ visitedIso2 = new Set() }: NavbarProps) => {
         ) : (
           visibleCategories.map((category) => {
             const isActive = activeCategoryIds.includes(category.id)
-            const Icon = getIcon(category.name)
             return (
               <Button
                 key={category.id}
@@ -442,7 +427,12 @@ const Navbar = ({ visitedIso2 = new Set() }: NavbarProps) => {
                   ${isActive ? 'bg-primary/10 text-primary font-medium border-primary/50' : ''}
                 `}
               >
-                <Icon className={`h-4 w-4 ${isActive ? 'text-primary' : 'text-muted-foreground'}`} />
+                <IconStack
+                  icons={getIconList(category.icons, getCategoryIcon(category.id))}
+                  size="h-4 w-4"
+                  max={2}
+                  className={`flex-shrink-0 ${isActive ? 'text-primary' : 'text-muted-foreground'}`}
+                />
                 {category.name}
               </Button>
             )

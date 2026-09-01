@@ -99,6 +99,14 @@ export async function fetchCountryBoundaries(iso2Raw: string): Promise<void> {
           parentId = parentMatch?.id ?? null
         }
 
+        // Geometry + its area, computed once and reused for both the insert
+        // and the on-conflict update (area in m² via the geography cast, which
+        // also sums multi-polygon parts for islands/exclaves).
+        const geomSql = sql`ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON(${JSON.stringify(
+          feature.geometry
+        )}), 4326))`
+        const areaSql = sql`ST_Area((${geomSql})::geography)`
+
         const [inserted] = await db
           .insert(places)
           .values({
@@ -108,18 +116,16 @@ export async function fetchCountryBoundaries(iso2Raw: string): Promise<void> {
             parentId,
             countryCode: iso2,
             shapeId: feature.properties.shapeID,
-            boundary: sql`ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON(${JSON.stringify(
-              feature.geometry
-            )}), 4326))`,
+            boundary: geomSql,
+            area: areaSql,
           })
           .onConflictDoUpdate({
             target: places.shapeId,
             set: {
               name: feature.properties.shapeName,
               parentId,
-              boundary: sql`ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON(${JSON.stringify(
-                feature.geometry
-              )}), 4326))`,
+              boundary: geomSql,
+              area: areaSql,
             },
           })
           .returning({ id: places.id })

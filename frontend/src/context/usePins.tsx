@@ -103,6 +103,15 @@ interface PinsContextValue {
   // Phase 2: viewport center for the top-comment widget
   viewportCenter: ViewportCenter
   setViewportCenter: (center: ViewportCenter) => void
+
+  // Exploration bar: the current country's ISO code, pushed from MapView's
+  // single location watcher (Sidebar must not start its own reverse-geocode),
+  // plus a counter bumped on each fresh unlock so the bar knows when persisted
+  // roll-up data changed and should be re-read.
+  countryIso2: string | null
+  setCountryIso2: (iso2: string | null) => void
+  unlockCount: number
+  bumpUnlockCount: () => void
 }
 
 const PinsContext = createContext<PinsContextValue | undefined>(undefined)
@@ -157,6 +166,11 @@ export function PinsProvider({ children }: { children: ReactNode }) {
   const [mapBounds, setMapBounds] = useState<[number, number, number, number] | null>(null)
   const [pinVisibility, setPinVisibility] = useState<PinVisibility>("all")
   const [viewportCenter, setViewportCenter] = useState<ViewportCenter>(null)
+
+  // Exploration bar coordination — see the interface docs above.
+  const [countryIso2, setCountryIso2] = useState<string | null>(null)
+  const [unlockCount, setUnlockCount] = useState(0)
+  const bumpUnlockCount = useCallback(() => setUnlockCount((n) => n + 1), [])
 
   // ---- Toggle category filter ----
   const toggleCategoryFilter = useCallback((categoryId: string) => {
@@ -338,6 +352,11 @@ export function PinsProvider({ children }: { children: ReactNode }) {
     setPinVisibility,
     viewportCenter,
     setViewportCenter,
+    // Exploration bar
+    countryIso2,
+    setCountryIso2,
+    unlockCount,
+    bumpUnlockCount,
   }
 
   return <PinsContext.Provider value={value}>{children}</PinsContext.Provider>

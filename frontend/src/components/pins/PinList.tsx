@@ -3,6 +3,7 @@ import { useMemo } from "react"
 import { usePins } from "@/context/usePins"
 import { useCategories } from "@/context/useCategories"
 import PinMarker from "@/components/pins/PinMarker"
+import { useCommentCounts } from "@/hooks/useCommentCounts"
 
 interface PinsListProps {
   zoom: number
@@ -24,6 +25,7 @@ function isInBounds(
 const PinsList = ({ zoom }: PinsListProps) => {
   const { pins, activeCategoryIds, mapBounds, temporaryPois, pinVisibility } = usePins()
   const { categories } = useCategories()
+  const commentCounts = useCommentCounts(pins)
 
   // Determine which pins to show based on visibility mode
   const showPinned = pinVisibility !== "unpinned"
@@ -61,7 +63,12 @@ const PinsList = ({ zoom }: PinsListProps) => {
       {/* Pinned (saved) markers */}
       {showPinned &&
         sortedPins.map((pin) => (
-          <PinMarker key={pin.id} pin={pin} zoom={zoom} />
+          <PinMarker
+            key={pin.id}
+            pin={pin}
+            zoom={zoom}
+            commentCount={commentCounts[pin.id]}
+          />
         ))}
 
       {/* Unpinned (temporary) markers – only when at least one filter is active */}

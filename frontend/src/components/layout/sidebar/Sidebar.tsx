@@ -27,6 +27,7 @@ import { useCategories } from "@/context/useCategories"
 import { getCategoryIcon, getIconList } from "@/lib/categoryDisplay"
 import { IconStack } from "@/components/ui/icon-stack"
 import { useRecentlyVisited } from "@/hooks/useRecentlyVisited"
+import { useExploreProgress } from "@/hooks/useExploreProgress"
 import ExploreProgress from "./ExploreProgress"
 import { useIsMobile } from "@/hooks/use-mobile"
 
@@ -46,6 +47,7 @@ const Sidebar = () => {
   const { state, setOpenMobile } = useSidebar()
   const isMobile = useIsMobile()
   const collapsed = !isMobile && state === "collapsed"
+  const exploreProgress = useExploreProgress()
 
   const closeMobileSidebar = () => {
     if (isMobile) setOpenMobile(false)
@@ -136,12 +138,12 @@ const Sidebar = () => {
 
       <SidebarContent className="flex-1 overflow-y-auto px-3 py-4 space-y-2 group-data-[collapsible=icon]:px-2">
         {/* Explore Section */}
-        <div className="rounded-xl border border-border/40 bg-card/40 p-3 space-y-2 group-data-[collapsible=icon]:p-2 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center hover:border-border/60 transition-colors">
-          <div className="flex items-center gap-2 px-1 text-muted-foreground group-data-[collapsible=icon]:px-0">
+        <div className="rounded-xl border border-border/40 bg-card/40 p-3 space-y-2 group-data-[collapsible=icon]:p-1 group-data-[collapsible=icon]:space-y-0 group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:shadow-none group-data-[collapsible=icon]:hover:border-transparent group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center hover:border-border/60 transition-colors">
+          <div className="flex items-center gap-2 px-1 text-muted-foreground group-data-[collapsible=icon]:hidden">
             <Compass className="h-3.5 w-3.5 flex-shrink-0" />
             <h3 className="text-[11px] font-semibold uppercase tracking-wider group-data-[collapsible=icon]:hidden">Explore</h3>
           </div>
-          <div className="space-y-0.5 group-data-[collapsible=icon]:w-full">
+          <div className="space-y-0.5 group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center">
             {categories.slice(0, 3).map((c) => {
               const isActive = listPanel?.type === "categoryList" && listPanel.categoryId === c.id
               return (
@@ -157,7 +159,7 @@ const Sidebar = () => {
                   }}
                   className={`
                     flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all
-                    group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-2.5
+                    group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0
                     ${isActive
                       ? "bg-primary/10 text-primary font-medium"
                       : "text-foreground hover:bg-muted/40"
@@ -167,7 +169,7 @@ const Sidebar = () => {
                   <IconStack
                     icons={getIconList(c.icons, getCategoryIcon(c.id))}
                     size="h-4 w-4"
-                    max={2}
+                    max={collapsed ? 1 : 2}
                     className={`flex-shrink-0 ${isActive ? "text-primary" : "text-muted-foreground"}`}
                   />
                   <span className="flex-1 text-left truncate group-data-[collapsible=icon]:hidden">{c.name}</span>
@@ -179,12 +181,12 @@ const Sidebar = () => {
         </div>
 
         {/* Saved Section */}
-        <div className="rounded-xl border border-border/40 bg-card/40 p-3 space-y-2 group-data-[collapsible=icon]:p-2 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center hover:border-border/60 transition-colors">
-          <div className="flex items-center gap-2 px-1 text-muted-foreground group-data-[collapsible=icon]:px-0">
+        <div className="rounded-xl border border-border/40 bg-card/40 p-3 space-y-2 group-data-[collapsible=icon]:p-1 group-data-[collapsible=icon]:space-y-0 group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:shadow-none group-data-[collapsible=icon]:hover:border-transparent group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center hover:border-border/60 transition-colors">
+          <div className="flex items-center gap-2 px-1 text-muted-foreground group-data-[collapsible=icon]:hidden">
             <FolderOpen className="h-3.5 w-3.5 flex-shrink-0" />
             <h3 className="text-[11px] font-semibold uppercase tracking-wider group-data-[collapsible=icon]:hidden">Saved</h3>
           </div>
-          <div className="space-y-0.5 group-data-[collapsible=icon]:w-full">
+          <div className="space-y-0.5 group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center">
             <button
               onClick={() => {
                 // ✅ DO NOT close sidebar – keep it open
@@ -196,7 +198,7 @@ const Sidebar = () => {
               }}
               className={`
                 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all
-                group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-2.5
+                group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0
                 ${listPanel?.type === "saved"
                   ? "bg-primary/10 text-primary font-medium"
                   : "text-foreground hover:bg-muted/40"
@@ -217,7 +219,7 @@ const Sidebar = () => {
                   setSecondaryPanel({ type: "savedPlaces" })
                 }, 50)
               }}
-              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-foreground transition-all hover:bg-muted/40 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-2.5"
+              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-foreground transition-all hover:bg-muted/40 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0"
             >
               <Plus className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
               <span className="flex-1 text-left group-data-[collapsible=icon]:hidden">Save a Place</span>
@@ -226,12 +228,12 @@ const Sidebar = () => {
         </div>
 
         {/* Recent Section */}
-        <div className="rounded-xl border border-border/40 bg-card/40 p-3 space-y-2 group-data-[collapsible=icon]:p-2 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center hover:border-border/60 transition-colors">
-          <div className="flex items-center gap-2 px-1 text-muted-foreground group-data-[collapsible=icon]:px-0">
+        <div className="rounded-xl border border-border/40 bg-card/40 p-3 space-y-2 group-data-[collapsible=icon]:p-1 group-data-[collapsible=icon]:space-y-0 group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:shadow-none group-data-[collapsible=icon]:hover:border-transparent group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center hover:border-border/60 transition-colors">
+          <div className="flex items-center gap-2 px-1 text-muted-foreground group-data-[collapsible=icon]:hidden">
             <History className="h-3.5 w-3.5 flex-shrink-0" />
             <h3 className="text-[11px] font-semibold uppercase tracking-wider group-data-[collapsible=icon]:hidden">Recent</h3>
           </div>
-          <div className="space-y-0.5 group-data-[collapsible=icon]:w-full">
+          <div className="space-y-0.5 group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center">
             <button
               onClick={() => {
                 // ✅ DO NOT close sidebar
@@ -243,7 +245,7 @@ const Sidebar = () => {
               }}
               className={`
                 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all
-                group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-2.5
+                group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0
                 ${listPanel?.type === "recentlyVisited"
                   ? "bg-primary/10 text-primary font-medium"
                   : "text-foreground hover:bg-muted/40"
@@ -258,12 +260,12 @@ const Sidebar = () => {
         </div>
 
         {/* Actions Section */}
-        <div className="rounded-xl border border-border/40 bg-card/40 p-3 space-y-2 group-data-[collapsible=icon]:p-2 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center hover:border-border/60 transition-colors">
-          <div className="flex items-center gap-2 px-1 text-muted-foreground group-data-[collapsible=icon]:px-0">
+        <div className="rounded-xl border border-border/40 bg-card/40 p-3 space-y-2 group-data-[collapsible=icon]:p-1 group-data-[collapsible=icon]:space-y-0 group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:shadow-none group-data-[collapsible=icon]:hover:border-transparent group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center hover:border-border/60 transition-colors">
+          <div className="flex items-center gap-2 px-1 text-muted-foreground group-data-[collapsible=icon]:hidden">
             <Sparkles className="h-3.5 w-3.5 flex-shrink-0" />
             <h3 className="text-[11px] font-semibold uppercase tracking-wider group-data-[collapsible=icon]:hidden">Actions</h3>
           </div>
-          <div className="space-y-0.5 group-data-[collapsible=icon]:w-full">
+          <div className="space-y-0.5 group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center">
             {/* ✅ Add Pin – closes sidebar */}
             <button
               onClick={() => {
@@ -279,7 +281,7 @@ const Sidebar = () => {
               }}
               className={`
                 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all
-                group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-2.5
+                group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0
                 ${secondaryPanel?.type === "addPin"
                   ? "bg-primary/10 text-primary font-medium"
                   : "text-foreground hover:bg-muted/40"
@@ -304,7 +306,7 @@ const Sidebar = () => {
               }}
               className={`
                 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all
-                group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-2.5
+                group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0
                 ${secondaryPanel?.type === "addComment"
                   ? "bg-primary/10 text-primary font-medium"
                   : "text-foreground hover:bg-muted/40"
@@ -319,12 +321,12 @@ const Sidebar = () => {
         </div>
 
         {/* Settings Section */}
-        <div className="rounded-xl border border-border/40 bg-card/40 p-3 space-y-2 group-data-[collapsible=icon]:p-2 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center hover:border-border/60 transition-colors">
-          <div className="flex items-center gap-2 px-1 text-muted-foreground group-data-[collapsible=icon]:px-0">
+        <div className="rounded-xl border border-border/40 bg-card/40 p-3 space-y-2 group-data-[collapsible=icon]:p-1 group-data-[collapsible=icon]:space-y-0 group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:shadow-none group-data-[collapsible=icon]:hover:border-transparent group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center hover:border-border/60 transition-colors">
+          <div className="flex items-center gap-2 px-1 text-muted-foreground group-data-[collapsible=icon]:hidden">
             <SettingsIcon className="h-3.5 w-3.5 flex-shrink-0" />
             <h3 className="text-[11px] font-semibold uppercase tracking-wider group-data-[collapsible=icon]:hidden">Settings</h3>
           </div>
-          <div className="space-y-0.5 group-data-[collapsible=icon]:w-full">
+          <div className="space-y-0.5 group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center">
             {/* ✅ Settings – closes sidebar */}
             <button
               onClick={() => {
@@ -337,7 +339,7 @@ const Sidebar = () => {
               }}
               className={`
                 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all
-                group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-2.5
+                group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0
                 ${secondaryPanel?.type === "settings"
                   ? "bg-primary/10 text-primary font-medium"
                   : "text-foreground hover:bg-muted/40"
@@ -355,7 +357,7 @@ const Sidebar = () => {
         {listPanel && (
           <div
             ref={pinListRef}
-            className="rounded-xl border border-border/40 bg-card/40 p-3 space-y-2 group-data-[collapsible=icon]:p-2 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center hover:border-border/60 transition-colors"
+            className="rounded-xl border border-border/40 bg-card/40 p-3 space-y-2 group-data-[collapsible=icon]:p-1 group-data-[collapsible=icon]:space-y-0 group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:shadow-none group-data-[collapsible=icon]:hover:border-transparent group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center hover:border-border/60 transition-colors"
           >
             <div className="flex items-center justify-between px-1 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:w-full">
               <div className="flex items-center gap-2 text-muted-foreground group-data-[collapsible=icon]:px-0">
@@ -371,7 +373,7 @@ const Sidebar = () => {
             </div>
 
             {listPanel.type === "recentlyVisited" ? (
-              <div className="space-y-0.5 group-data-[collapsible=icon]:w-full">
+              <div className="space-y-0.5 group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center">
                 {recentlyVisitedLoading ? (
                   <div className="text-sm text-muted-foreground px-3 py-4 text-center group-data-[collapsible=icon]:hidden">Loading...</div>
                 ) : recentlyVisitedItems.length === 0 ? (
@@ -412,10 +414,10 @@ const Sidebar = () => {
                         className="flex items-center gap-2.5 flex-1 min-w-0"
                       >
                         <Clock className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-                        <span className="truncate text-left">{item.name}</span>
-                        {item.isPin && <span className="text-[10px] text-primary/60 font-medium">pinned</span>}
+                        <span className="truncate text-left group-data-[collapsible=icon]:hidden">{item.name}</span>
+                        {item.isPin && <span className="text-[10px] text-primary/60 font-medium group-data-[collapsible=icon]:hidden">pinned</span>}
                         {item.visitCount && item.visitCount > 1 && (
-                          <span className="text-[10px] text-muted-foreground">({item.visitCount}x)</span>
+                          <span className="text-[10px] text-muted-foreground group-data-[collapsible=icon]:hidden">({item.visitCount}x)</span>
                         )}
                       </button>
                       {!item.isPin && (
@@ -445,7 +447,7 @@ const Sidebar = () => {
                 )}
               </div>
             ) : (
-              <div className="space-y-0.5 group-data-[collapsible=icon]:w-full">
+              <div className="space-y-0.5 group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center">
                 {displayedPins.length === 0 ? (
                   <div className="text-sm text-muted-foreground px-3 py-4 text-center group-data-[collapsible=icon]:hidden">No pins found</div>
                 ) : (
@@ -456,9 +458,8 @@ const Sidebar = () => {
                       className={`
                         flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all
                         text-foreground hover:bg-muted/40
-                        group-data-[collapsible=icon]:justify-center
-                        group-data-[collapsible=icon]:px-2
-                        group-data-[collapsible=icon]:py-2.5
+                        group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center
+                        group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0
                       `}
                     >
                       <PinRowIcon className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
@@ -474,15 +475,20 @@ const Sidebar = () => {
 
       <SidebarFooter className="border-t border-border/40 px-4 py-3 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-3">
         <div className="group-data-[collapsible=icon]:hidden">
-          <ExploreProgress percent={42} />
+          <ExploreProgress
+            title={exploreProgress?.title ?? "Exploring…"}
+            percent={exploreProgress?.percent ?? null}
+          />
         </div>
         <div className="hidden group-data-[collapsible=icon]:flex items-center justify-center">
-          <div className="relative flex h-10 w-10 items-center justify-center">
-            <svg className="h-10 w-10 -rotate-90 transform">
+          <div className="relative flex h-8 w-8 items-center justify-center">
+            <svg className="h-8 w-8 -rotate-90 transform">
               <circle cx="20" cy="20" r="16" stroke="currentColor" strokeWidth="3" fill="none" className="text-muted/20" />
-              <circle cx="20" cy="20" r="16" stroke="currentColor" strokeWidth="3" fill="none" strokeDasharray={100} strokeDashoffset={58} className="text-primary transition-all duration-500" strokeLinecap="round" />
+              <circle cx="20" cy="20" r="16" stroke="currentColor" strokeWidth="3" fill="none" strokeDasharray={100} strokeDashoffset={100 - (exploreProgress?.percent ?? 0)} className="text-primary transition-all duration-500" strokeLinecap="round" />
             </svg>
-            <span className="absolute text-[10px] font-semibold text-foreground">42%</span>
+            <span className="absolute text-[10px] font-semibold text-foreground">
+              {exploreProgress ? `${exploreProgress.percent}%` : "–"}
+            </span>
           </div>
         </div>
       </SidebarFooter>

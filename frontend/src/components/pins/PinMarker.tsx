@@ -10,12 +10,14 @@ import type { Pin } from "@/types"
 interface PinMarkerProps {
   pin: Pin
   zoom: number
+  /** Total comments on the pin (incl. routes it's an endpoint of); >0 shows a badge. */
+  commentCount?: number
 }
 
 const MIN_ZOOM_TO_SHOW_PINS = 12
 const MIN_ZOOM_TO_SHOW_IMAGES = 13
 
-const PinMarker = ({ pin, zoom }: PinMarkerProps) => {
+const PinMarker = ({ pin, zoom, commentCount }: PinMarkerProps) => {
   // ✅ ALL HOOKS AT THE TOP
   const {
     setSecondaryPanel,
@@ -85,6 +87,13 @@ const PinMarker = ({ pin, zoom }: PinMarkerProps) => {
           {/* Small indicator dot for pins with images */}
           {hasImage && (
             <div className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-green-400 ring-2 ring-background animate-pulse" />
+          )}
+
+          {/* Comment-count badge (top-left; distinct from the green image dot). */}
+          {typeof commentCount === "number" && commentCount > 0 && (
+            <div className="absolute -top-1 -left-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold leading-none text-white ring-2 ring-background">
+              {commentCount > 9 ? "9+" : commentCount}
+            </div>
           )}
         </div>
 

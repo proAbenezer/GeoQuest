@@ -62,6 +62,10 @@ export const places = pgTable("places", {
   countryCode: text("country_code").notNull(),
   shapeId: text("shape_id").unique(),
   boundary: multiPolygon("boundary"),
+  // Precomputed geographic area (m² via ST_Area(boundary::geography)) used to
+  // weight the exploration roll-up by real coverage instead of child count.
+  // Null until backfilled; the roll-up falls back to count-weighting then.
+  area: doublePrecision("area"),
 })
 
 // --- COUNTRY FETCH / CACHE STATUS ---
@@ -93,6 +97,37 @@ export const unlockedPlaces = pgTable(
       .on(table.placeId, table.userId)
       .where(sql`${table.userId} IS NOT NULL`),
     uniqueGuestUnlock: uniqueIndex("unique_guest_unlock")
+      .on(table.placeId, table.guestId)
+      .where(sql`${table.guestId} IS NOT NULL`),
+  })
+)
+
+// --- EXPLORATION ROLL-UP (derived, persisted per identity) ---
+// The unlock logic decides which LEAF divisions a user has physically visited
+// (that is `unlockedPlaces` above). A place's "explored" flag and percentage are
+// the bottom-up roll-up of those leaves: a parent is fully explored when every
+// direct child is explored, and percent = explored direct children / total
+// direct children. These rows are recomputed and persisted at write time (POST
+// /places/unlock) so reads never rebuild the hierarchy. Stored per identity
+// (user or guest), keyed exactly like `unlockedPlaces`.
+export const placeExploration = pgTable(
+  "place_exploration",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    placeId: uuid("place_id")
+      .notNull()
+      .references(() => places.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+    guestId: uuid("guest_id").references(() => guests.id, { onDelete: "cascade" }),
+    explored: boolean("explored").notNull().default(false),
+    percent: integer("percent").notNull().default(0),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqueUserExploration: uniqueIndex("unique_user_exploration")
+      .on(table.placeId, table.userId)
+      .where(sql`${table.userId} IS NOT NULL`),
+    uniqueGuestExploration: uniqueIndex("unique_guest_exploration")
       .on(table.placeId, table.guestId)
       .where(sql`${table.guestId} IS NOT NULL`),
   })
@@ -211,6 +246,7 @@ export const placesRelations = relations(places, ({ one, many }) => ({
     relationName: "place_hierarchy",
   }),
   unlockedBy: many(unlockedPlaces),
+  exploration: many(placeExploration),
   pins: many(pins),
   recentlyVisited: many(recentlyVisited),
   comments: many(comments, { relationName: "comments_place_target" }),
@@ -221,6 +257,12 @@ export const unlockedPlacesRelations = relations(unlockedPlaces, ({ one }) => ({
   user: one(users, { fields: [unlockedPlaces.userId], references: [users.id] }),
   guest: one(guests, { fields: [unlockedPlaces.guestId], references: [guests.id] }),
   pin: one(pins, { fields: [unlockedPlaces.pinId], references: [pins.id] }),
+}))
+
+export const placeExplorationRelations = relations(placeExploration, ({ one }) => ({
+  place: one(places, { fields: [placeExploration.placeId], references: [places.id] }),
+  user: one(users, { fields: [placeExploration.userId], references: [users.id] }),
+  guest: one(guests, { fields: [placeExploration.guestId], references: [guests.id] }),
 }))
 
 export const pinsRelations = relations(pins, ({ one, many }) => ({

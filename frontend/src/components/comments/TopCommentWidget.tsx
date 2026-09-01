@@ -75,11 +75,30 @@ export default function TopCommentWidget() {
   const safeIndex = total > 0 ? Math.min(index, total - 1) : 0
   const comment = comments[safeIndex]
 
-  if (!target || !comment || dismissed) return null
+  if (!target || !comment) return null
+
+  // Dismissed — show only a small floating toggle so the widget can be
+  // reopened. It stays visible until tapped (persists; the debounced effect
+  // above only auto-reopens it when the viewport moves to a new location).
+  if (dismissed) {
+    return (
+      <button
+        type="button"
+        onClick={() => setDismissed(false)}
+        className="absolute bottom-20 right-3 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-background/95 shadow-xl backdrop-blur supports-[backdrop-filter]:bg-background/80 transition-colors hover:bg-muted/40 sm:bottom-6 sm:right-4"
+        aria-label="Show community comments"
+        title="Community comments"
+      >
+        <MessageSquare className="h-4 w-4 text-primary" />
+      </button>
+    )
+  }
 
   return (
     <>
-      <div className="absolute bottom-6 right-4 z-30 w-72 max-w-[calc(100vw-2rem)]">
+      {/* bottom-20 on small screens lifts the card clear of the bottom-right
+          info/attribution area; bottom-6 on sm+ restores the desktop position. */}
+      <div className="absolute bottom-20 right-3 z-30 w-72 max-w-[calc(100vw-2rem)] sm:bottom-6 sm:right-4">
         <div
           className={`rounded-xl border border-border/60 bg-background/95 shadow-xl backdrop-blur supports-[backdrop-filter]:bg-background/80 overflow-hidden ${
             loading ? "opacity-70" : ""

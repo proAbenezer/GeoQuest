@@ -6,7 +6,7 @@
   "scripts": {
   "dev": "tsx watch src/server.ts",
   "build": "npm install && npm run build",
-  "start": "node dist/server.js",
+  "start": "tsx src/server.ts",
   "db:generate": "drizzle-kit generate",
   "db:migrate": "drizzle-kit migrate",
   "fetch:country": "tsx src/scripts/fetchCountry.ts"

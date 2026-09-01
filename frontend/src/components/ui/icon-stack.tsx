@@ -9,9 +9,11 @@ interface IconStackProps {
 }
 
 /**
- * Renders a cluster of icons as overlapping rounded chips so multi-icon pins
- * and categories display gracefully in tight spaces. Colors inherit from the
- * parent via currentColor; overflow icons collapse into a "+N" chip.
+ * Renders a cluster of icons, overlapping slightly, so multi-icon pins and
+ * categories display gracefully in tight spaces. Icons carry NO background —
+ * a solid chip behind each one rendered as a dark circle in dark mode, which
+ * is why there's none. Colors inherit from the parent via currentColor;
+ * overflow icons collapse into a "+N" label.
  */
 export function IconStack({
   icons,
@@ -23,17 +25,14 @@ export function IconStack({
   const shown = icons.slice(0, max)
   const extra = icons.length - shown.length
   return (
-    <span className={`inline-flex items-center -space-x-1.5 ${className}`}>
-      {shown.map((Icon, i) => (
-        <span
-          key={i}
-          className="flex items-center justify-center rounded-full bg-background ring-1 ring-border shadow-sm"
-        >
-          <Icon className={size} />
-        </span>
-      ))}
+    <span className={`inline-flex items-center ${className}`}>
+      <span className="inline-flex items-center -space-x-1.5">
+        {shown.map((Icon, i) => (
+          <Icon key={i} className={size} />
+        ))}
+      </span>
       {extra > 0 && (
-        <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-muted px-1 text-[10px] font-medium text-muted-foreground ring-1 ring-border">
+        <span className="ml-1 text-[10px] font-medium text-muted-foreground">
           +{extra}
         </span>
       )}

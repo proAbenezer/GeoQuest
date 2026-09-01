@@ -400,6 +400,56 @@ router.delete("/:id", requireAuth, async (req, res) => {
 })
 
 // ============================================
+// GET /comments/counts?pinIds=a,b,c  (readable by guests)
+// Per-pin comment counts for marker badges. A pin's count adds up comments
+// targeted directly at it (targetType='pin') plus comments on routes that
+// involve the pin as an endpoint (targetType='route', matching either
+// routeStartPinId or routeEndPinId) — so a route comment badges both of its
+// endpoint pins. Replies inherit their parent's target columns, so they count
+// toward the same pin. Pins with no comments are simply absent from the map.
+// ============================================
+router.get("/counts", async (req, res) => {
+  const raw = String(req.query.pinIds ?? "")
+  const ids = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+  if (ids.length === 0) return res.json({ counts: {} })
+  if (ids.length > 500) return res.status(400).json({ error: "Too many pin ids" })
+
+  try {
+    const [pinRows, routeStartRows, routeEndRows] = await Promise.all([
+      db
+        .select({ pinId: comments.pinId, count: sql<number>`count(*)::int` })
+        .from(comments)
+        .where(and(eq(comments.targetType, "pin"), inArray(comments.pinId, ids)))
+        .groupBy(comments.pinId),
+      db
+        .select({ pinId: comments.routeStartPinId, count: sql<number>`count(*)::int` })
+        .from(comments)
+        .where(and(eq(comments.targetType, "route"), inArray(comments.routeStartPinId, ids)))
+        .groupBy(comments.routeStartPinId),
+      db
+        .select({ pinId: comments.routeEndPinId, count: sql<number>`count(*)::int` })
+        .from(comments)
+        .where(and(eq(comments.targetType, "route"), inArray(comments.routeEndPinId, ids)))
+        .groupBy(comments.routeEndPinId),
+    ])
+
+    const counts: Record<string, number> = {}
+    for (const rows of [pinRows, routeStartRows, routeEndRows]) {
+      for (const r of rows) {
+        if (r.pinId) counts[r.pinId] = (counts[r.pinId] ?? 0) + Number(r.count)
+      }
+    }
+    res.json({ counts })
+  } catch (error) {
+    console.error("Failed to get comment counts:", error)
+    res.status(500).json({ error: "Failed to get comment counts" })
+  }
+})
+
+// ============================================
 // GET /comments/relevant?lat=&lng=  (readable by guests)
 // Phase 2 — the community comment widget. Finds the comment-bearing location
 // nearest the given viewport point (using the lat/lng snapshot on each

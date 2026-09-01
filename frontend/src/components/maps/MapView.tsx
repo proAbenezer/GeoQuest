@@ -24,7 +24,7 @@ export default function MapView() {
   const mapRef = useRef<any>(null)
   const geolocateControlRef = useRef<mapboxgl.GeolocateControl | null>(null)
   const [zoom, setZoom] = useState(12)
-  const { flyToTarget, setFlyToTarget, setMapBounds, setViewportCenter } = usePins()
+  const { flyToTarget, setFlyToTarget, setMapBounds, setViewportCenter, setCountryIso2, bumpUnlockCount } = usePins()
   const { openPreview } = usePanelManager()
   
   const { trackVisitedPlace } = useRecentlyVisited()
@@ -61,8 +61,18 @@ export default function MapView() {
   useEffect(() => {
     if (result?.unlocked && !result.alreadyUnlocked && result?.place) {
       console.log('Place unlocked:', result.place.name)
+      // Tell the exploration bar that persisted roll-up data changed, so it
+      // re-reads it from the server (the server recomputes on write).
+      bumpUnlockCount()
     }
-  }, [result])
+  }, [result, bumpUnlockCount])
+
+  // Feed the sidebar's exploration bar the current country. iso2 is derived by
+  // THIS component's location watcher (the only one in the app) — the sidebar
+  // consumes it through context instead of running its own reverse-geocode.
+  useEffect(() => {
+    setCountryIso2(iso2 ?? null)
+  }, [iso2, setCountryIso2])
 
   useEffect(() => {
     if (!flyToTarget || !mapRef.current) return
