@@ -9,6 +9,7 @@ import uploadsRouter from "./routes/uploads.ts"
 import recentlyVisitedRoutes from "./routes/recently-visited.ts"
 import userRouter from "./routes/user.ts"
 import commentsRouter from "./routes/comments.ts"
+import statsRouter from "./routes/stats.ts"
 
 const app = express()
 
@@ -30,5 +31,6 @@ app.use("/uploads", uploadsRouter)
 app.use("/recently-visited", recentlyVisitedRoutes)
 app.use("/user", userRouter)
 app.use("/comments", commentsRouter)
+app.use("/stats", statsRouter)
 
 export default app

@@ -211,8 +211,8 @@ async function refreshAncestors(leafPlaceId: string, owner: Owner): Promise<void
 // offset from UTC in minutes. Folding the offset in BEFORE reading the UTC
 // getters computes the correct wall-clock date in that offset's timezone
 // regardless of the server's own timezone (a JS Date's local getters would use
-// the server's tz instead).
-function localDayFromUtc(utcMs: number, offsetMinutes: number): number {
+// the server's tz instead). Exported for the stats route's legacy backfill.
+export function localDayFromUtc(utcMs: number, offsetMinutes: number): number {
   const d = new Date(utcMs + offsetMinutes * 60000)
   return d.getUTCFullYear() * 10000 + (d.getUTCMonth() + 1) * 100 + d.getUTCDate()
 }
