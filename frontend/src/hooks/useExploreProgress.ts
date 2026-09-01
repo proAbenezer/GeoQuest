@@ -210,7 +210,7 @@ export function useExploreProgress(): ExploreProgress {
   }, [places, entries])
 
   return useMemo<ExploreProgress>(() => {
-    if (!countryIndex) return null
+    if (!countryIndex || !countryIso2) return null
     const { rootId, countryTitle, children, nameById, bboxCache, entryFor } = countryIndex
 
     // No viewport yet → whole-country aggregate.

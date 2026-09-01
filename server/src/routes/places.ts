@@ -256,12 +256,37 @@ async function updateTravelStats(
     ? new Date(Math.min(new Date(existing.firstVisitAt).getTime(), now.getTime()))
     : now
 
+  // placesCount on a NEW row is derived from the identity's actual unlocks in
+  // this country rather than starting at 0: a legacy identity's first
+  // post-upgrade check-in is often a RE-unlock (alreadyUnlocked=true), which
+  // would otherwise bake a 0-count into the row forever (GET /stats only lazy-
+  // backfills when the identity has NO travel_stats rows at all). Existing rows
+  // just increment on fresh unlocks; the local day is added on any check-in.
+  let placesCount = existing?.placesCount ?? 0
+  if (!existing) {
+    const [cnt] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(unlockedPlaces)
+      .innerJoin(places, eq(unlockedPlaces.placeId, places.id))
+      .where(
+        and(
+          owner.userId
+            ? eq(unlockedPlaces.userId, owner.userId)
+            : eq(unlockedPlaces.guestId, owner.guestId!),
+          eq(places.countryCode, leaf.countryCode)
+        )
+      )
+    placesCount = cnt?.count ?? 0
+  } else if (!alreadyUnlocked) {
+    placesCount += 1
+  }
+
   const values = {
     userId: owner.userId ?? null,
     guestId: owner.userId ? null : (owner.guestId ?? null),
     countryCode: leaf.countryCode,
     countryName,
-    placesCount: (existing?.placesCount ?? 0) + (alreadyUnlocked ? 0 : 1),
+    placesCount,
     days: Array.from(days).sort((a, b) => a - b),
     firstVisitAt,
     lastVisitAt: now,
