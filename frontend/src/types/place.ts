@@ -53,3 +53,18 @@ export type TravelStats = {
   } | null
   categories: { name: string; count: number }[]
 }
+
+// A route (start pin → end pin) that has comments, with its comment count and
+// both endpoint pins' names + coordinates. Drives the map overlay that makes
+// route conversations discoverable.
+export type CommentRoute = {
+  routeStartPinId: string
+  routeEndPinId: string
+  count: number
+  startName: string
+  endName: string
+  startLat: number
+  startLng: number
+  endLat: number
+  endLng: number
+}

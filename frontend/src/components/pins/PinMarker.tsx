@@ -14,7 +14,7 @@ interface PinMarkerProps {
   commentCount?: number
 }
 
-const MIN_ZOOM_TO_SHOW_PINS = 12
+export const MIN_ZOOM_TO_SHOW_PINS = 12
 const MIN_ZOOM_TO_SHOW_IMAGES = 13
 
 const PinMarker = ({ pin, zoom, commentCount }: PinMarkerProps) => {
@@ -24,6 +24,7 @@ const PinMarker = ({ pin, zoom, commentCount }: PinMarkerProps) => {
     setFlyToTarget,
     setHighlightedPinId,
     highlightedPinId,
+    selectedRoute,
   } = usePins()
   
   const [imageLoaded, setImageLoaded] = useState(false)
@@ -36,9 +37,19 @@ const PinMarker = ({ pin, zoom, commentCount }: PinMarkerProps) => {
     return null
   }
 
-  if (zoom < MIN_ZOOM_TO_SHOW_PINS) return null
-
   const isHighlighted = highlightedPinId === pin.id
+  // A pin that is an endpoint of the currently selected route also stays
+  // visible below the zoom threshold, so the orange route keeps its two
+  // endpoint pins on screen (mirrors the highlighted-pin rule).
+  const isEndpointOfSelectedRoute =
+    !!selectedRoute &&
+    (pin.id === selectedRoute.routeStartPinId || pin.id === selectedRoute.routeEndPinId)
+
+  // Hide below the pin zoom threshold — except the highlighted pin and the
+  // selected route's endpoints, which stay visible so the user can track them
+  // even when everything else disappears (matches the route overlay's
+  // selected-route behavior).
+  if (zoom < MIN_ZOOM_TO_SHOW_PINS && !isHighlighted && !isEndpointOfSelectedRoute) return null
   const hasImage = pin.imageUrl && !imageError
   const showImagePreview = zoom >= MIN_ZOOM_TO_SHOW_IMAGES && hasImage && isHovered
 
@@ -70,15 +81,15 @@ const PinMarker = ({ pin, zoom, commentCount }: PinMarkerProps) => {
         {/* Main pin icon */}
         <div className="relative flex items-center justify-center">
           <MapPin
-            size={pin.visited ? 28 : 22}
+            size={pin.visited ? 38 : 30}
             strokeWidth={2.5}
             className={`
-              transition-all duration-200 drop-shadow-lg
+              transition-all duration-200 drop-shadow-[0_2px_6px_rgba(0,0,0,0.85)]
               ${isHighlighted
                 ? "text-[#D97B29] filter drop-shadow-[0_0_8px_rgba(217,123,41,0.5)]"
                 : pin.visited
                   ? "text-white"
-                  : "text-white/40"
+                  : "text-white/80"
               }
             `}
             fill={pin.visited ? "#D97B29" : "none"}
@@ -91,7 +102,7 @@ const PinMarker = ({ pin, zoom, commentCount }: PinMarkerProps) => {
 
           {/* Comment-count badge (top-left; distinct from the green image dot). */}
           {typeof commentCount === "number" && commentCount > 0 && (
-            <div className="absolute -top-1 -left-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold leading-none text-white ring-2 ring-background">
+            <div className="absolute -top-1 -left-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold leading-none text-white ring-2 ring-background">
               {commentCount > 9 ? "9+" : commentCount}
             </div>
           )}
@@ -102,7 +113,7 @@ const PinMarker = ({ pin, zoom, commentCount }: PinMarkerProps) => {
           <div className="absolute -top-6 left-1/2 -translate-x-1/2 flex justify-center">
             <IconStack
               icons={getIconList(pin.icons, getCategoryIcon(pin.categoryId))}
-              size="h-3.5 w-3.5"
+              size="h-4 w-4"
               max={3}
               className="text-primary"
             />

@@ -1,5 +1,6 @@
 // components/layout/sidebar/Sidebar.tsx
 import { useRef, useEffect } from "react"
+import { useNavigate, useLocation } from "react-router-dom"
 import {
   Sidebar as SidebarRoot,
   SidebarHeader,
@@ -19,8 +20,10 @@ import {
   History,
   Sparkles,
   Star,
+  Tag,
   X,
   MessageSquarePlus,
+  LayoutDashboard,
 } from "lucide-react"
 import { usePins } from "@/context/usePins"
 import { useCategories } from "@/context/useCategories"
@@ -32,6 +35,9 @@ import ExploreProgress from "./ExploreProgress"
 import { useIsMobile } from "@/hooks/use-mobile"
 
 const Sidebar = () => {
+  const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const isOnDashboard = pathname === "/stats"
   const {
     listPanel,
     setListPanel,
@@ -42,7 +48,7 @@ const Sidebar = () => {
     setHighlightedPinId,
     setPrefillLocation,
   } = usePins()
-  const { categories } = useCategories()
+  const { categories, setIsManagingCategories } = useCategories()
   const { items: recentlyVisitedItems, loading: recentlyVisitedLoading } = useRecentlyVisited()
   const { state, setOpenMobile } = useSidebar()
   const isMobile = useIsMobile()
@@ -76,22 +82,6 @@ const Sidebar = () => {
     panelTitle = "Recently Visited"
   }
 
-  const getPinRowIcon = () => {
-    if (!listPanel) return MapPin
-    switch (listPanel.type) {
-      case "saved":
-        return Star
-      case "recentlyVisited":
-        return Clock
-      case "categoryList": {
-        const category = categories.find((c) => c.id === listPanel.categoryId)
-        return category ? getCategoryIcon(category.id) : FolderOpen
-      }
-      default:
-        return MapPin
-    }
-  }
-
   const getDisplayedPins = () => {
     if (!listPanel) return []
     switch (listPanel.type) {
@@ -104,7 +94,6 @@ const Sidebar = () => {
     }
   }
 
-  const PinRowIcon = getPinRowIcon()
   const displayedPins = getDisplayedPins()
 
   const handlePinClick = (pin: any) => {
@@ -137,6 +126,29 @@ const Sidebar = () => {
       </SidebarHeader>
 
       <SidebarContent className="flex-1 overflow-y-auto px-3 py-4 space-y-2 group-data-[collapsible=icon]:px-2">
+        {/* Dashboard – pinned to the top of the sidebar */}
+        <div className="rounded-xl border border-border/40 bg-card/40 p-3 space-y-2 group-data-[collapsible=icon]:p-1 group-data-[collapsible=icon]:space-y-0 group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:shadow-none group-data-[collapsible=icon]:hover:border-transparent group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center hover:border-border/60 transition-colors">
+          <button
+            onClick={() => {
+              closeMobileSidebar()
+              setSecondaryPanel(null)
+              navigate(isOnDashboard ? "/" : "/stats")
+            }}
+            className={`
+              flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all
+              group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0
+              ${isOnDashboard
+                ? "bg-primary/10 text-primary font-medium group-data-[collapsible=icon]:bg-transparent"
+                : "text-foreground hover:bg-muted/40 group-data-[collapsible=icon]:hover:bg-transparent"
+              }
+            `}
+          >
+            <LayoutDashboard className={`h-4 w-4 flex-shrink-0 ${isOnDashboard ? "text-primary" : "text-muted-foreground"}`} />
+            <span className="flex-1 text-left group-data-[collapsible=icon]:hidden">Dashboard</span>
+            {isOnDashboard && <span className="h-1.5 w-1.5 rounded-full bg-primary group-data-[collapsible=icon]:hidden" />}
+          </button>
+        </div>
+
         {/* Explore Section */}
         <div className="rounded-xl border border-border/40 bg-card/40 p-3 space-y-2 group-data-[collapsible=icon]:p-1 group-data-[collapsible=icon]:space-y-0 group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:shadow-none group-data-[collapsible=icon]:hover:border-transparent group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center hover:border-border/60 transition-colors">
           <div className="flex items-center gap-2 px-1 text-muted-foreground group-data-[collapsible=icon]:hidden">
@@ -161,8 +173,8 @@ const Sidebar = () => {
                     flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all
                     group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0
                     ${isActive
-                      ? "bg-primary/10 text-primary font-medium"
-                      : "text-foreground hover:bg-muted/40"
+                      ? "bg-primary/10 text-primary font-medium group-data-[collapsible=icon]:bg-transparent"
+                      : "text-foreground hover:bg-muted/40 group-data-[collapsible=icon]:hover:bg-transparent"
                     }
                   `}
                 >
@@ -200,8 +212,8 @@ const Sidebar = () => {
                 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all
                 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0
                 ${listPanel?.type === "saved"
-                  ? "bg-primary/10 text-primary font-medium"
-                  : "text-foreground hover:bg-muted/40"
+                  ? "bg-primary/10 text-primary font-medium group-data-[collapsible=icon]:bg-transparent"
+                  : "text-foreground hover:bg-muted/40 group-data-[collapsible=icon]:hover:bg-transparent"
                 }
               `}
             >
@@ -219,7 +231,7 @@ const Sidebar = () => {
                   setSecondaryPanel({ type: "savedPlaces" })
                 }, 50)
               }}
-              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-foreground transition-all hover:bg-muted/40 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0"
+              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-foreground transition-all hover:bg-muted/40 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:hover:bg-transparent"
             >
               <Plus className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
               <span className="flex-1 text-left group-data-[collapsible=icon]:hidden">Save a Place</span>
@@ -247,8 +259,8 @@ const Sidebar = () => {
                 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all
                 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0
                 ${listPanel?.type === "recentlyVisited"
-                  ? "bg-primary/10 text-primary font-medium"
-                  : "text-foreground hover:bg-muted/40"
+                  ? "bg-primary/10 text-primary font-medium group-data-[collapsible=icon]:bg-transparent"
+                  : "text-foreground hover:bg-muted/40 group-data-[collapsible=icon]:hover:bg-transparent"
                 }
               `}
             >
@@ -283,8 +295,8 @@ const Sidebar = () => {
                 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all
                 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0
                 ${secondaryPanel?.type === "addPin"
-                  ? "bg-primary/10 text-primary font-medium"
-                  : "text-foreground hover:bg-muted/40"
+                  ? "bg-primary/10 text-primary font-medium group-data-[collapsible=icon]:bg-transparent"
+                  : "text-foreground hover:bg-muted/40 group-data-[collapsible=icon]:hover:bg-transparent"
                 }
               `}
             >
@@ -308,14 +320,33 @@ const Sidebar = () => {
                 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all
                 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0
                 ${secondaryPanel?.type === "addComment"
-                  ? "bg-primary/10 text-primary font-medium"
-                  : "text-foreground hover:bg-muted/40"
+                  ? "bg-primary/10 text-primary font-medium group-data-[collapsible=icon]:bg-transparent"
+                  : "text-foreground hover:bg-muted/40 group-data-[collapsible=icon]:hover:bg-transparent"
                 }
               `}
             >
               <MessageSquarePlus className={`h-4 w-4 flex-shrink-0 ${secondaryPanel?.type === "addComment" ? "text-primary" : "text-muted-foreground"}`} />
               <span className="flex-1 text-left group-data-[collapsible=icon]:hidden">Add Comment</span>
               {secondaryPanel?.type === "addComment" && <span className="h-1.5 w-1.5 rounded-full bg-primary group-data-[collapsible=icon]:hidden" />}
+            </button>
+
+            {/* ✅ Add Category – opens the category manager (add form on top) */}
+            <button
+              onClick={() => {
+                closeMobileSidebar()
+                setSecondaryPanel(null)
+                setTimeout(() => {
+                  setIsManagingCategories(true)
+                }, 50)
+              }}
+              className={`
+                flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all
+                group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0
+                text-foreground hover:bg-muted/40 group-data-[collapsible=icon]:hover:bg-transparent
+              `}
+            >
+              <Tag className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+              <span className="flex-1 text-left group-data-[collapsible=icon]:hidden">Add Category</span>
             </button>
           </div>
         </div>
@@ -341,8 +372,8 @@ const Sidebar = () => {
                 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all
                 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0
                 ${secondaryPanel?.type === "settings"
-                  ? "bg-primary/10 text-primary font-medium"
-                  : "text-foreground hover:bg-muted/40"
+                  ? "bg-primary/10 text-primary font-medium group-data-[collapsible=icon]:bg-transparent"
+                  : "text-foreground hover:bg-muted/40 group-data-[collapsible=icon]:hover:bg-transparent"
                 }
               `}
             >
@@ -382,7 +413,7 @@ const Sidebar = () => {
                   recentlyVisitedItems.map((item) => (
                     <div
                       key={item.id}
-                      className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-all hover:bg-muted/40 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-2.5"
+                      className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-all hover:bg-muted/40 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-2.5 group-data-[collapsible=icon]:hover:bg-transparent"
                     >
                       <button
                         onClick={() => {
@@ -457,12 +488,17 @@ const Sidebar = () => {
                       onClick={() => handlePinClick(pin)} // handlePinClick closes sidebar
                       className={`
                         flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all
-                        text-foreground hover:bg-muted/40
+                        text-foreground hover:bg-muted/40 group-data-[collapsible=icon]:hover:bg-transparent
                         group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center
                         group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0
                       `}
                     >
-                      <PinRowIcon className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                      <IconStack
+                        icons={getIconList(pin.icons, getCategoryIcon(pin.categoryId))}
+                        size="h-4 w-4"
+                        max={collapsed ? 1 : 2}
+                        className="flex-shrink-0 text-muted-foreground"
+                      />
                       <span className="flex-1 text-left truncate group-data-[collapsible=icon]:hidden">{pin.name}</span>
                     </button>
                   ))
@@ -486,7 +522,7 @@ const Sidebar = () => {
               <circle cx="20" cy="20" r="16" stroke="currentColor" strokeWidth="3" fill="none" className="text-muted/20" />
               <circle cx="20" cy="20" r="16" stroke="currentColor" strokeWidth="3" fill="none" strokeDasharray={100} strokeDashoffset={100 - (exploreProgress?.percent ?? 0)} className="text-primary transition-all duration-500" strokeLinecap="round" />
             </svg>
-            <span className="absolute text-[10px] font-semibold text-foreground">
+            <span className="absolute inset-0 flex items-center justify-center text-[10px] font-semibold leading-none text-foreground tabular-nums">
               {exploreProgress ? `${exploreProgress.percent}%` : "–"}
             </span>
           </div>

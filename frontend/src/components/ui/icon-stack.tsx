@@ -10,10 +10,10 @@ interface IconStackProps {
 
 /**
  * Renders a cluster of icons, overlapping slightly, so multi-icon pins and
- * categories display gracefully in tight spaces. Icons carry NO background —
- * a solid chip behind each one rendered as a dark circle in dark mode, which
- * is why there's none. Colors inherit from the parent via currentColor;
- * overflow icons collapse into a "+N" label.
+ * categories display gracefully in tight spaces. Icons are deliberately
+ * transparent — no chip or circle behind them — so the artwork reads on any
+ * background. Colors inherit from the parent via currentColor; overflow icons
+ * collapse into a "+N" label.
  */
 export function IconStack({
   icons,

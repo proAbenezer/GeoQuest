@@ -276,7 +276,7 @@ const PinDetailPanel = () => {
       }}
     >
       {/* HEADER – includes the X close button */}
-      <div className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+      <div className="sticky top-0 z-10 border-b bg-card/50 backdrop-blur px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <div className="flex items-start justify-between">
           <div className="min-w-0">
             {isPinDetail ? (
@@ -476,7 +476,7 @@ const PinDetailPanel = () => {
                 className="text-primary"
               />
             )}
-            <div className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary">
+            <div className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-primary">
               <IconStack
                 icons={
                   category

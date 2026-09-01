@@ -1,39 +1,48 @@
 // lib/migrateGuestData.ts
-// Reassigns rows created under a guest session to an authenticated user,
-// so guest history (pins, categories, unlock progress, recently visited)
-// survives the guest → account transition.
+// Reassigns rows created under a guest session to an authenticated user, so
+// guest history (pins, categories, unlock progress, exploration roll-ups,
+// travel stats, recently visited) fully survives the guest → account transition.
 //
-// guestId is KEPT on migrated rows (not nulled out), matching the existing
-// signup behavior — a reclaimed row ends up with BOTH userId and guestId set,
-// keeping the guest history visible/auditable.
+// guestId is NULLED on every migrated row (guest attribution is cleared) — the
+// rows belong entirely to the account after signup. Guest rows that collide
+// with data the account already owns are dropped first so the partial unique
+// indexes never throw during reassignment.
 import { and, eq, inArray, isNull } from "drizzle-orm"
 import { db } from "../db/index.js"
-import { categories, pins, recentlyVisited, unlockedPlaces } from "../db/schema.js"
+import {
+  categories,
+  pins,
+  placeExploration,
+  recentlyVisited,
+  travelStats,
+  unlockedPlaces,
+} from "../db/schema.js"
 
 export async function migrateGuestData(userId: string, guestId: string) {
   // Categories & pins have no per-user unique constraint — direct reassign.
   await db
     .update(categories)
-    .set({ userId })
+    .set({ userId, guestId: null })
     .where(and(eq(categories.guestId, guestId), isNull(categories.userId)))
 
   await db
     .update(pins)
-    .set({ userId })
+    .set({ userId, guestId: null })
     .where(and(eq(pins.guestId, guestId), isNull(pins.userId)))
 
-  // unlockedPlaces & recentlyVisited each have a unique (placeId, userId)
-  // index, so first drop guest rows that would collide with rows the user
-  // already owns, then reassign the rest.
-  await migrateUniquePlaceTable(unlockedPlaces, userId, guestId)
-  await migrateUniquePlaceTable(recentlyVisited, userId, guestId)
+  // unlockedPlaces, placeExploration & recentlyVisited are each unique on
+  // (placeId, userId); travelStats is unique on (userId, countryCode). For
+  // each, first drop guest rows that would collide with rows the user already
+  // owns, then reassign the rest and clear the guestId.
+  await migratePlaceKeyedTable(unlockedPlaces, userId, guestId)
+  await migratePlaceKeyedTable(placeExploration, userId, guestId)
+  await migratePlaceKeyedTable(recentlyVisited, userId, guestId)
+  await migrateCountryKeyedTable(travelStats, userId, guestId)
 }
 
-async function migrateUniquePlaceTable(
-  table: typeof unlockedPlaces | typeof recentlyVisited,
-  userId: string,
-  guestId: string
-) {
+type PlaceKeyedTable = typeof unlockedPlaces | typeof placeExploration | typeof recentlyVisited
+
+async function migratePlaceKeyedTable(table: PlaceKeyedTable, userId: string, guestId: string) {
   const userPlaceIds = db
     .select({ placeId: table.placeId })
     .from(table)
@@ -46,6 +55,23 @@ async function migrateUniquePlaceTable(
 
   await db
     .update(table)
-    .set({ userId })
+    .set({ userId, guestId: null })
+    .where(and(eq(table.guestId, guestId), isNull(table.userId)))
+}
+
+async function migrateCountryKeyedTable(table: typeof travelStats, userId: string, guestId: string) {
+  const userCountryCodes = db
+    .select({ countryCode: table.countryCode })
+    .from(table)
+    .where(and(eq(table.userId, userId), isNull(table.guestId)))
+
+  // Drop only the guest rows that duplicate a country the user already owns.
+  await db
+    .delete(table)
+    .where(and(eq(table.guestId, guestId), inArray(table.countryCode, userCountryCodes)))
+
+  await db
+    .update(table)
+    .set({ userId, guestId: null })
     .where(and(eq(table.guestId, guestId), isNull(table.userId)))
 }

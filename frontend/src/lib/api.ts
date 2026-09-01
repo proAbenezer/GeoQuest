@@ -1,4 +1,4 @@
-import type { Place, UnlockedEntry, CountryFetchStatus, ExplorationEntry, TravelStats } from "@/types/place"
+import type { Place, UnlockedEntry, CountryFetchStatus, ExplorationEntry, TravelStats, CommentRoute } from "@/types/place"
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000"
 
@@ -66,4 +66,13 @@ export async function fetchStats(): Promise<TravelStats> {
   const res = await fetch(`${API_BASE}/stats`, { credentials: "include" })
   if (!res.ok) throw new Error(`Failed to fetch stats: ${res.status}`)
   return res.json()
+}
+
+// Every route (start pin → end pin) that has comments, with counts and both
+// endpoint pins' names + coordinates — drives the map overlay.
+export async function fetchCommentRoutes(): Promise<CommentRoute[]> {
+  const res = await fetch(`${API_BASE}/comments/routes`, { credentials: "include" })
+  if (!res.ok) throw new Error(`Failed to fetch comment routes: ${res.status}`)
+  const data = await res.json()
+  return data.routes as CommentRoute[]
 }

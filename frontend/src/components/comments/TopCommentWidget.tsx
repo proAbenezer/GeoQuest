@@ -30,16 +30,49 @@ function targetKey(t: (CommentTarget & { name: string }) | null): string {
 }
 
 export default function TopCommentWidget() {
-  const { viewportCenter, commentViewOpen, openCommentView } = usePins()
+  const { viewportCenter, commentViewOpen, openCommentView, selectedRoute } = usePins()
   const [result, setResult] = useState<RelevantCommentResult>({ target: null, comments: [] })
   const [index, setIndex] = useState(0)
   const [loading, setLoading] = useState(false)
   const [dismissed, setDismissed] = useState(false)
   const currentKeyRef = useRef<string>("")
 
-  // Debounced relevant query — only fires after the viewport has settled for
-  // 500ms, so pan/zoom doesn't hammer the endpoint.
+  // The widget's feed is either the selected route (user clicked a path — show
+  // that route's comments) or the nearest comment-bearing location to the
+  // viewport center. Route selection wins while it's set; deselecting the
+  // route reverts to the viewport-based feed.
   useEffect(() => {
+    if (selectedRoute) {
+      let cancelled = false
+      setLoading(true)
+      const params = new URLSearchParams({
+        routeStartPinId: selectedRoute.routeStartPinId,
+        routeEndPinId: selectedRoute.routeEndPinId,
+      })
+      fetch(`${API_BASE}/comments/relevant?${params}`, { credentials: "include" })
+        .then((response) => response.json())
+        .then((data: RelevantCommentResult) => {
+          if (cancelled) return
+          const key = targetKey(data.target)
+          if (key !== currentKeyRef.current) {
+            // Different target — restart from its top comment and bring the
+            // widget back if it was dismissed.
+            currentKeyRef.current = key
+            setIndex(0)
+            setDismissed(false)
+            openCommentView(false)
+          }
+          setResult(data)
+        })
+        .catch((err) => console.error("Failed to load route comments:", err))
+        .finally(() => {
+          if (!cancelled) setLoading(false)
+        })
+      return () => {
+        cancelled = true
+      }
+    }
+
     if (!viewportCenter) return
     const timer = setTimeout(async () => {
       setLoading(true)
@@ -68,7 +101,7 @@ export default function TopCommentWidget() {
       }
     }, 500)
     return () => clearTimeout(timer)
-  }, [viewportCenter?.latitude, viewportCenter?.longitude])
+  }, [selectedRoute, viewportCenter?.latitude, viewportCenter?.longitude, openCommentView])
 
   const { target, comments } = result
   const total = comments.length
@@ -176,7 +209,7 @@ export default function TopCommentWidget() {
       {/* View-more side panel, reusing the threaded CommentSection */}
       {commentViewOpen && target && (
         <SidePanel widthClassName="w-[28rem]" onOpenChange={(open) => openCommentView(open)}>
-          <div className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+          <div className="sticky top-0 z-10 border-b bg-card/50 backdrop-blur px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
             <div className="flex items-center justify-between">
               <div className="flex min-w-0 items-center gap-2.5">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-sm">

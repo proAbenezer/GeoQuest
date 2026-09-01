@@ -38,6 +38,11 @@ type PrefillLocation = {
 
 type FlyToTarget = { latitude: number; longitude: number } | null
 
+// The route currently selected on the map (its comment widget feed + orange
+// highlight). Separate from `secondaryPanel`: selecting a route drives the
+// bottom-right comment widget instead of opening a side panel.
+type SelectedRoute = { routeStartPinId: string; routeEndPinId: string } | null
+
 // Phase 2: the map viewport center, updated on pan/zoom. Feeds the top-comment
 // widget's "nearest location" query.
 type ViewportCenter = { latitude: number; longitude: number } | null
@@ -77,6 +82,9 @@ interface PinsContextValue {
   setFlyToTarget: (target: FlyToTarget) => void
   highlightedPinId: string | null
   setHighlightedPinId: (id: string | null) => void
+  // The route selected on the map — drives the comment widget + orange path.
+  selectedRoute: SelectedRoute
+  setSelectedRoute: (route: SelectedRoute) => void
 
   // Single-sidebar-open coordination: the filter panel and the comment view are
   // overlay sidebars tracked outside `secondaryPanel`; these coordinate all
@@ -126,6 +134,7 @@ export function PinsProvider({ children }: { children: ReactNode }) {
   const [isManagingSaved, setIsManagingSaved] = useState(false)
   const [flyToTarget, setFlyToTarget] = useState<FlyToTarget>(null)
   const [highlightedPinId, setHighlightedPinId] = useState<string | null>(null)
+  const [selectedRoute, setSelectedRoute] = useState<SelectedRoute>(null)
 
   // ---- Overlay sidebars tracked outside `secondaryPanel`, coordinated below
   // so only one overlay sidebar is open at a time. ----
@@ -134,9 +143,12 @@ export function PinsProvider({ children }: { children: ReactNode }) {
 
   // Public setter for the secondary (right-side) panel. Opening a panel closes
   // the filter panel and the comment view; closing one never reopens another.
+  // Opening any panel also deselects the selected route (a panel takes focus
+  // away from the map's route selection).
   const setSecondaryPanel = useCallback((panel: SecondaryPanel) => {
     _setSecondaryPanel(panel)
     if (panel) {
+      setSelectedRoute(null)
       setFilterPanelOpen(false)
       setCommentViewOpen(false)
     }
@@ -147,6 +159,7 @@ export function PinsProvider({ children }: { children: ReactNode }) {
     setFilterPanelOpen(open)
     if (open) {
       _setSecondaryPanel(null)
+      setSelectedRoute(null)
       setCommentViewOpen(false)
     }
   }, [])
@@ -334,6 +347,8 @@ export function PinsProvider({ children }: { children: ReactNode }) {
     setFlyToTarget,
     highlightedPinId,
     setHighlightedPinId,
+    selectedRoute,
+    setSelectedRoute,
     // Single-sidebar-open coordination
     filterPanelOpen,
     openFilterPanel,

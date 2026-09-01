@@ -420,11 +420,11 @@ const Navbar = ({ visitedIso2 = new Set() }: NavbarProps) => {
                 size="sm"
                 onClick={() => toggleCategoryFilter(category.id)}
                 className={`
-                  gap-1.5 rounded-lg border-border/40 bg-card/40
+                  gap-1.5 rounded-lg border-border/40
                   text-sm text-foreground
                   hover:bg-muted/40 hover:border-border/60
                   transition-all
-                  ${isActive ? 'bg-primary/10 text-primary font-medium border-primary/50' : ''}
+                  ${isActive ? 'text-primary font-medium border-primary/50' : ''}
                 `}
               >
                 <IconStack

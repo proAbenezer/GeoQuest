@@ -32,8 +32,8 @@ const SavedPlacesPanel = () => {
         if (!open) handleClose()
       }}
     >
-      {/* Cleaner header – no backdrop, simple border-b, safe-area padding */}
-      <div className="border-b px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+      {/* Header – matches the card-tinted body sections */}
+      <div className="border-b bg-card/50 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">

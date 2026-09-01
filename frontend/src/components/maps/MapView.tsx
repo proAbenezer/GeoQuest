@@ -5,6 +5,7 @@ import MapControllers from "@/components/maps/MapControllers"
 import { useRef, useState, useMemo, useEffect, useCallback } from "react"
 import PinsList from "@/components/pins/PinList"
 import PlacesLayers from "@/components/maps/PlacesLayers"
+import CommentRoutesLayer from "@/components/maps/CommentRoutesLayer"
 import UnlockStatusBanner from "@/components/maps/UnlockStatusBanner"
 import { usePins } from "@/context/usePins"
 import { usePanelManager } from "@/hooks/usePanelManager"
@@ -16,15 +17,73 @@ import { useVisitedCountriesPlaces } from "@/hooks/useVisitedCountriesPlaces"
 import { useUnlockedPlaces } from "@/hooks/useUnlockedPlaces"
 import { placesToGeoJson } from "@/lib/placesToGeoJson"
 import TopCommentWidget from "@/components/comments/TopCommentWidget"
-import { Loader2 } from "lucide-react"
+import { Loader2, Route as RouteIcon } from "lucide-react"
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
+
+type Center = { latitude: number; longitude: number }
+
+// Fallback country for the exploration bar. The geolocate control starts OFF
+// (GPS only begins on first click), so until the user shares their location
+// `iso2` is null and the bar would otherwise sit at "Exploring… –". While GPS
+// is unknown, reverse-geocode the map's viewport center instead — the
+// exploration bar follows what's on screen (pan to another country, see its
+// progress). GPS, once available, always wins and clears the fallback.
+function useViewportCountry(
+  gpsIso2: string | null,
+  center: Center | null
+): string | null {
+  const [iso2, setIso2] = useState<string | null>(null)
+
+  // GPS arriving (or never existing) resets any stale viewport-derived code.
+  useEffect(() => {
+    if (gpsIso2) setIso2(null)
+  }, [gpsIso2])
+
+  useEffect(() => {
+    if (gpsIso2 || !center) return
+    let cancelled = false
+    // Debounce: the center updates on every pan/zoom end.
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `https://api.mapbox.com/search/geocode/v6/reverse?longitude=${center.longitude}&latitude=${center.latitude}&types=country&access_token=${MAPBOX_TOKEN}`
+        )
+        const data = await res.json()
+        const code = data.features?.[0]?.properties?.context?.country?.country_code
+        if (!cancelled && code) setIso2(code.toUpperCase())
+      } catch (err) {
+        console.error("Viewport country reverse-geocode failed:", err)
+      }
+    }, 300)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [gpsIso2, center])
+
+  return iso2
+}
 
 export default function MapView() {
   const mapRef = useRef<any>(null)
   const geolocateControlRef = useRef<mapboxgl.GeolocateControl | null>(null)
   const [zoom, setZoom] = useState(12)
-  const { flyToTarget, setFlyToTarget, setMapBounds, setViewportCenter, setCountryIso2, bumpUnlockCount } = usePins()
+  const [showCommentRoutes, setShowCommentRoutes] = useState(true)
+  const [commentRouteCount, setCommentRouteCount] = useState(0)
+  const {
+    flyToTarget,
+    setFlyToTarget,
+    setMapBounds,
+    setViewportCenter,
+    viewportCenter,
+    setCountryIso2,
+    bumpUnlockCount,
+    setSecondaryPanel,
+    setHighlightedPinId,
+    setSelectedRoute,
+    openCommentView,
+  } = usePins()
   const { openPreview } = usePanelManager()
   
   const { trackVisitedPlace } = useRecentlyVisited()
@@ -70,9 +129,12 @@ export default function MapView() {
   // Feed the sidebar's exploration bar the current country. iso2 is derived by
   // THIS component's location watcher (the only one in the app) — the sidebar
   // consumes it through context instead of running its own reverse-geocode.
+  // Until GPS resolves (the geolocate control starts off), fall back to the
+  // country under the viewport center so the bar shows a percentage right away.
+  const viewportCountryIso2 = useViewportCountry(iso2, viewportCenter)
   useEffect(() => {
-    setCountryIso2(iso2 ?? null)
-  }, [iso2, setCountryIso2])
+    setCountryIso2(iso2 ?? viewportCountryIso2 ?? null)
+  }, [iso2, viewportCountryIso2, setCountryIso2])
 
   useEffect(() => {
     if (!flyToTarget || !mapRef.current) return
@@ -94,6 +156,30 @@ export default function MapView() {
   }, [setMapBounds, setViewportCenter])
 
   async function handleMapClick(e: any) {
+    // Comment-route lines are a canvas layer, so a click on one never reaches
+    // the HTML badge markers — detect it here via queryRenderedFeatures and
+    // open the route-comment panel instead of reverse-geocoding the point.
+    const map = mapRef.current?.getMap()
+    if (map) {
+      const hit = map.queryRenderedFeatures(e.point, { layers: ["comment-routes-line", "comment-routes-casing"] })
+      if (hit.length > 0) {
+        const props = hit[0].properties
+        if (props?.routeStartPinId && props?.routeEndPinId) {
+          e.originalEvent?.stopPropagation?.()
+          // Selecting a route drives the comment widget (no side panel): close
+          // any open panels, deselect any highlighted pin, and mark the route.
+          setHighlightedPinId(null)
+          openCommentView(false)
+          setSecondaryPanel(null)
+          setSelectedRoute({
+            routeStartPinId: props.routeStartPinId,
+            routeEndPinId: props.routeEndPinId,
+          })
+          return
+        }
+      }
+    }
+
     const { lat, lng } = e.lngLat
     try {
       const response = await fetch(
@@ -164,6 +250,11 @@ export default function MapView() {
         onMoveEnd={updateBounds}
       >
         {geojson && <PlacesLayers geojson={geojson} />}
+        <CommentRoutesLayer
+          visible={showCommentRoutes}
+          zoom={zoom}
+          onCountChange={setCommentRouteCount}
+        />
         <MapControllers
           mapRef={mapRef}
           onLocationUpdate={handleLocationUpdate}
@@ -182,6 +273,40 @@ export default function MapView() {
         </div>
       )}
       <UnlockStatusBanner result={result} error={unlockError ?? trackingError} />
+
+      {/* Route-comments toggle — the discoverable control for the route overlay.
+          Only appears once a route has comments, and stays visible when hidden
+          so it can be toggled back on. */}
+      {commentRouteCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowCommentRoutes((v) => !v)}
+          aria-pressed={showCommentRoutes}
+          title={
+            showCommentRoutes
+              ? "Hide comment routes on the map"
+              : "Show comment routes on the map"
+          }
+          className={`
+            absolute bottom-8 left-3 z-30 flex items-center gap-2 rounded-full border px-3 py-2 shadow-xl backdrop-blur transition-colors
+            supports-[backdrop-filter]:bg-background/80
+            ${showCommentRoutes
+              ? "border-primary/40 bg-primary/15 text-primary hover:bg-primary/25"
+              : "border-border/60 bg-background/95 text-muted-foreground hover:bg-muted/40"
+            }
+          `}
+        >
+          <RouteIcon className="h-4 w-4" />
+          <span className="text-xs font-semibold">Routes</span>
+          <span
+            className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground"
+            aria-label={`${commentRouteCount} commented route${commentRouteCount === 1 ? "" : "s"}`}
+          >
+            {commentRouteCount > 9 ? "9+" : commentRouteCount}
+          </span>
+        </button>
+      )}
+
       <TopCommentWidget />
     </div>
   )

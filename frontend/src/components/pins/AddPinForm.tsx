@@ -21,6 +21,8 @@ const AddPinPanel = () => {
     setSecondaryPanel,
     prefillLocation,
     setPrefillLocation,
+    setHighlightedPinId,
+    setFlyToTarget,
   } = usePins()
   const { closeAllPanels } = usePanelManager()
   const { markAsPinned } = useRecentlyVisited()
@@ -34,6 +36,7 @@ const AddPinPanel = () => {
   const [imageUrl, setImageUrl] = useState("")
   const [pinIcons, setPinIcons] = useState<string[]>([])
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [imageUploading, setImageUploading] = useState(false)
   const [nameTouched, setNameTouched] = useState(false)
 
   const [newCategoryName, setNewCategoryName] = useState("")
@@ -79,6 +82,7 @@ const AddPinPanel = () => {
     setImageUrl("")
     setPinIcons([])
     setUploadError(null)
+    setImageUploading(false)
     setNameTouched(false)
     search.reset()
     closeAllPanels()
@@ -138,7 +142,22 @@ const AddPinPanel = () => {
         await markAsPinned(recentlyVisitedId, newPin.id)
       }
 
-      resetForm()
+      // Clear the form for the next pin, then open the new pin's detail panel
+      // so the user lands on the pin they just created (instead of the panel
+      // closing back to the map).
+      setPinName("")
+      setPinDescription("")
+      setCategoryId("")
+      setImageUrl("")
+      setPinIcons([])
+      setUploadError(null)
+      setImageUploading(false)
+      setNameTouched(false)
+      search.reset()
+      setPrefillLocation(null)
+      setHighlightedPinId(newPin.id)
+      setFlyToTarget({ latitude: newPin.latitude, longitude: newPin.longitude })
+      setSecondaryPanel({ type: "pinDetail", pin: newPin })
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to create pin")
     }
@@ -152,7 +171,7 @@ const AddPinPanel = () => {
       }}
     >
       {/* Header */}
-      <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 py-3">
+      <div className="border-b bg-card/50 backdrop-blur px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-sm">
@@ -249,6 +268,7 @@ const AddPinPanel = () => {
                 icons={pinIcons}
                 setIcons={setPinIcons}
                 onUploadError={setUploadError}
+                onUploadingChange={setImageUploading}
               />
             </div>
 
@@ -261,8 +281,12 @@ const AddPinPanel = () => {
               >
                 Cancel
               </Button>
-              <Button type="submit" className="flex-1" disabled={isBlocked}>
-                Create Pin
+              <Button
+                type="submit"
+                className="flex-1"
+                disabled={isBlocked || imageUploading}
+              >
+                {imageUploading ? "Uploading photo…" : "Create Pin"}
               </Button>
             </div>
           </form>

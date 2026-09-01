@@ -122,7 +122,7 @@ type CountryIndex = {
 
 export function useExploreProgress(): ExploreProgress {
   const { countryIso2, mapBounds, viewportCenter, unlockCount } = usePins()
-  const { places } = useCountryPlaces(countryIso2)
+  const { places, status: countryStatus } = useCountryPlaces(countryIso2)
 
   const [entries, setEntries] = useState<ExplorationEntry[]>([])
   const entriesIso2 = useRef<string | null>(null)
@@ -139,6 +139,15 @@ export function useExploreProgress(): ExploreProgress {
     if (!countryIso2) {
       setEntries([])
       entriesIso2.current = null
+      return
+    }
+    // Only read the persisted roll-up once the country's boundary tree is
+    // cached — GET /places/exploration returns [] before that, and reading
+    // earlier would bake in an empty (0%) result. This also covers the first
+    // load: the viewport-derived country kicks off a fetch (status "fetching"),
+    // and this effect re-runs when it flips to "cached".
+    if (countryStatus !== "cached") {
+      if (entriesIso2.current !== countryIso2) setEntries([])
       return
     }
     let cancelled = false
@@ -158,7 +167,7 @@ export function useExploreProgress(): ExploreProgress {
       cancelled = true
       clearTimeout(timer)
     }
-  }, [countryIso2, unlockCount])
+  }, [countryIso2, unlockCount, countryStatus])
 
   // Hysteresis baseline is per-country: clear the previous pick when the
   // country switches so a stale region from the last country can't bias the

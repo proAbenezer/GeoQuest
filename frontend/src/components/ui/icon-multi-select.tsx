@@ -8,16 +8,20 @@ interface IconMultiSelectProps {
   onChange: (icons: string[]) => void
 }
 
+// A pin or category can carry at most two icons — enough for a small stack,
+// but no more (matches "don't allow more than two").
+const MAX_ICONS = 2
+
 /**
- * Multi-select icon picker for categories and pins. Selected identifiers are
- * shown as removable chips; the grid below toggles them on/off. Replaces the
- * (previously nonexistent) single icon picker with an array-based multi-select.
+ * Icon picker for categories and pins. Up to MAX_ICONS icons can be chosen; the
+ * grid below toggles them on/off, and picks past the cap are ignored.
  */
 export function IconMultiSelect({ value, onChange }: IconMultiSelectProps) {
+  const atCap = value.length >= MAX_ICONS
   const toggle = (id: string) => {
     if (value.includes(id)) {
       onChange(value.filter((v) => v !== id))
-    } else {
+    } else if (!atCap) {
       onChange([...value, id])
     }
   }
@@ -31,7 +35,7 @@ export function IconMultiSelect({ value, onChange }: IconMultiSelectProps) {
             return (
               <span
                 key={id}
-                className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-xs font-medium text-primary ring-1 ring-primary/20"
+                className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-primary"
               >
                 {Icon && <Icon className="h-3.5 w-3.5" />}
                 {id}
@@ -57,12 +61,14 @@ export function IconMultiSelect({ value, onChange }: IconMultiSelectProps) {
               key={id}
               type="button"
               onClick={() => toggle(id)}
-              title={id}
+              title={active ? id : atCap ? `Remove an icon to pick ${id}` : id}
               aria-pressed={active}
               className={`flex items-center justify-center rounded-lg p-1.5 transition-colors ${
                 active
-                  ? "bg-primary/15 text-primary ring-1 ring-primary/30"
-                  : "text-muted-foreground hover:bg-muted"
+                  ? "text-primary"
+                  : atCap
+                    ? "cursor-not-allowed text-muted-foreground/30"
+                    : "text-muted-foreground hover:bg-muted"
               }`}
             >
               <Icon className="h-4 w-4" />
@@ -70,6 +76,11 @@ export function IconMultiSelect({ value, onChange }: IconMultiSelectProps) {
           )
         })}
       </div>
+      {atCap && (
+        <p className="text-[11px] text-muted-foreground/70">
+          Maximum of {MAX_ICONS} icons — remove one to pick another.
+        </p>
+      )}
     </div>
   )
 }

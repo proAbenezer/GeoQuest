@@ -1,4 +1,4 @@
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -34,6 +34,8 @@ type Props = {
   icons: string[]
   setIcons: (v: string[]) => void
   onUploadError?: (message: string) => void
+  /** Reports when an image upload is in flight (so the submit button can be disabled). */
+  onUploadingChange?: (uploading: boolean) => void
 }
 
 const ADD_CATEGORY_VALUE = "__add_category__"
@@ -50,6 +52,7 @@ const PinFormFields = ({
   icons,
   setIcons,
   onUploadError,
+  onUploadingChange,
 }: Props) => {
   const { categories, addCategory } = useCategories()
   const { uploadImage, uploading, error: uploadError } = useImageUpload()
@@ -61,6 +64,12 @@ const PinFormFields = ({
   const [newCategoryIcons, setNewCategoryIcons] = useState<string[]>([])
   const [, setCreatingCategory] = useState(false)
   const [categoryError, setCategoryError] = useState<string | null>(null)
+
+  // Surface the in-flight upload state so the parent (the Add Pin panel) can
+  // disable its submit button while a photo is uploading.
+  useEffect(() => {
+    onUploadingChange?.(uploading)
+  }, [uploading, onUploadingChange])
 
   function handleSelectChange(value: string | null) {
     if (value === null) return

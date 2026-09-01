@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Loader2,
   Plane,
+  ArrowLeft,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -91,15 +92,24 @@ export default function StatsPage() {
 
   if (!data) {
     return (
-      <div className="flex h-full items-center justify-center">
-        {loading ? (
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        ) : error ? (
-          <div className="flex flex-col items-center gap-3 p-6 text-center">
-            <p className="text-muted-foreground">{error}</p>
-            <Button onClick={refresh}>Retry</Button>
-          </div>
-        ) : null}
+      <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-6">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to map
+        </Link>
+        <div className="flex min-h-[50vh] items-center justify-center">
+          {loading ? (
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          ) : error ? (
+            <div className="flex flex-col items-center gap-3 p-6 text-center">
+              <p className="text-muted-foreground">{error}</p>
+              <Button onClick={refresh}>Retry</Button>
+            </div>
+          ) : null}
+        </div>
       </div>
     )
   }
@@ -108,23 +118,40 @@ export default function StatsPage() {
 
   if (summary.totalPlaces === 0) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-        <Plane className="h-10 w-10 text-muted-foreground" />
-        <h2 className="text-lg font-semibold">No travels yet</h2>
-        <p className="max-w-sm text-sm text-muted-foreground">
-          Your travel stats will appear here once you check in somewhere. Head to the map and
-          let your location be detected, or tap{" "}
-          <span className="font-medium text-foreground">Check in</span>.
-        </p>
-        <Link to="/">
-          <Button>Go to map</Button>
+      <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-6">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to map
         </Link>
+        <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 p-6 text-center">
+          <Plane className="h-10 w-10 text-muted-foreground" />
+          <h2 className="text-lg font-semibold">No travels yet</h2>
+          <p className="max-w-sm text-sm text-muted-foreground">
+            Your travel stats will appear here once you check in somewhere. Head to the map and
+            let your location be detected, or tap{" "}
+            <span className="font-medium text-foreground">Check in</span>.
+          </p>
+          <Link to="/">
+            <Button>Go to map</Button>
+          </Link>
+        </div>
       </div>
     )
   }
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-6">
+      <Link
+        to="/"
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back to map
+      </Link>
+
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Your travel stats</h1>
         <Button variant="ghost" size="sm" onClick={refresh} className="gap-1">

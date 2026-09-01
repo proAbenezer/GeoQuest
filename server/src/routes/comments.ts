@@ -450,6 +450,71 @@ router.get("/counts", async (req, res) => {
 })
 
 // ============================================
+// GET /comments/routes  (readable by guests)
+// Every distinct route (start pin → end pin) that has comments, with the
+// comment count and both endpoint pins' names + coordinates. Drives the map
+// overlay (dashed route lines + count badges) so route conversations are
+// discoverable, not just badged on the endpoint pins.
+// ============================================
+router.get("/routes", async (req, res) => {
+  try {
+    const grouped = await db
+      .select({
+        routeStartPinId: comments.routeStartPinId,
+        routeEndPinId: comments.routeEndPinId,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(comments)
+      .where(eq(comments.targetType, "route"))
+      .groupBy(comments.routeStartPinId, comments.routeEndPinId)
+
+    if (grouped.length === 0) return res.json({ routes: [] })
+
+    // Batch-load both endpoints for every route so we can attach names + coords.
+    const pinIds = new Set<string>()
+    for (const r of grouped) {
+      if (r.routeStartPinId) pinIds.add(r.routeStartPinId)
+      if (r.routeEndPinId) pinIds.add(r.routeEndPinId)
+    }
+    const pinRows = await db
+      .select({
+        id: pins.id,
+        name: pins.name,
+        customName: pins.customName,
+        latitude: pins.latitude,
+        longitude: pins.longitude,
+      })
+      .from(pins)
+      .where(inArray(pins.id, [...pinIds]))
+    const pinMap = new Map(pinRows.map((p) => [p.id, p]))
+
+    const routes = grouped
+      .filter((r) => r.routeStartPinId && r.routeEndPinId)
+      .map((r) => {
+        const start = pinMap.get(r.routeStartPinId!)
+        const end = pinMap.get(r.routeEndPinId!)
+        return {
+          routeStartPinId: r.routeStartPinId!,
+          routeEndPinId: r.routeEndPinId!,
+          count: r.count,
+          startName: start?.customName || start?.name || "A",
+          endName: end?.customName || end?.name || "B",
+          startLat: start?.latitude ?? null,
+          startLng: start?.longitude ?? null,
+          endLat: end?.latitude ?? null,
+          endLng: end?.longitude ?? null,
+        }
+      })
+      .filter((r) => r.startLat != null && r.endLat != null)
+
+    res.json({ routes })
+  } catch (error) {
+    console.error("Failed to get comment routes:", error)
+    res.status(500).json({ error: "Failed to get comment routes" })
+  }
+})
+
+// ============================================
 // GET /comments/relevant?lat=&lng=  (readable by guests)
 // Phase 2 — the community comment widget. Finds the comment-bearing location
 // nearest the given viewport point (using the lat/lng snapshot on each
@@ -457,6 +522,43 @@ router.get("/counts", async (req, res) => {
 // descending vote order so the widget can step through them with "Next".
 // ============================================
 router.get("/relevant", async (req, res) => {
+  // Route-targeted query — the widget is showing a specific route (the user
+  // clicked a path). Return that route's comments directly instead of the
+  // nearest comment-bearing location to a point.
+  const routeStartPinId = typeof req.query.routeStartPinId === "string" ? req.query.routeStartPinId : undefined
+  const routeEndPinId = typeof req.query.routeEndPinId === "string" ? req.query.routeEndPinId : undefined
+
+  if (routeStartPinId && routeEndPinId) {
+    try {
+      const where = and(
+        eq(comments.routeStartPinId, routeStartPinId),
+        eq(comments.routeEndPinId, routeEndPinId)
+      )!
+      const flat = await fetchComments(where, req.userId)
+      flat.sort(
+        (a, b) =>
+          b.netVotes - a.netVotes ||
+          a.createdAt.localeCompare(b.createdAt)
+      )
+      const [s, e] = await Promise.all([
+        db.query.pins.findFirst({ where: eq(pins.id, routeStartPinId) }),
+        db.query.pins.findFirst({ where: eq(pins.id, routeEndPinId) }),
+      ])
+      return res.json({
+        target: {
+          type: "route",
+          routeStartPinId,
+          routeEndPinId,
+          name: `Route: ${s?.customName || s?.name || "A"} → ${e?.customName || e?.name || "B"}`,
+        },
+        comments: flat,
+      })
+    } catch (error) {
+      console.error("Failed to find route comments:", error)
+      return res.status(500).json({ error: "Failed to find route comments" })
+    }
+  }
+
   const lat = Number(req.query.lat)
   const lng = Number(req.query.lng)
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {

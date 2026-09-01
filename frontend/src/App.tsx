@@ -17,14 +17,13 @@ const App = () => {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/profile" element={<ProfilePage />} />
+          {/* Dashboard is a standalone page (no navbar/sidebar), like /profile —
+              it carries its own "Back to map" link. */}
+          <Route element={<ProtectedRoute />}>
+            <Route path="/stats" element={<StatsPage />} />
+          </Route>
           <Route element={<AppLayout />}>
             <Route path="/" element={<MapPage />} />
-            <Route element={<ProtectedRoute />}>
-              <Route path="/stats" element={<StatsPage />} />
-            </Route>
-          </Route>
-
-          <Route element={<ProtectedRoute />}>
           </Route>
         </Routes>
       </BrowserRouter>
