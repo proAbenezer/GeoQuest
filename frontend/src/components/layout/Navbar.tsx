@@ -476,6 +476,12 @@ const Navbar = ({ visitedIso2 = new Set() }: NavbarProps) => {
             >
               Profile
             </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => navigate("/stats")}
+              className="rounded-lg text-sm hover:bg-muted/40 transition-colors"
+            >
+              Stats
+            </DropdownMenuItem>
             <DropdownMenuSeparator className="bg-border/40" />
             <DropdownMenuItem
               onClick={handleLogout}

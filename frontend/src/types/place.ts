@@ -23,3 +23,33 @@ export type ExplorationEntry = {
 }
 
 export type CountryFetchStatus = "not_cached" | "fetching" | "cached" | "failed"
+
+// --- Stats dashboard (item 14) ---
+export type CountryStat = {
+  iso2: string
+  name: string
+  continent: string | null
+  places: number
+  days: number
+  firstVisitAt: string | null
+  lastVisitAt: string | null
+  explorationPercent: number | null
+}
+
+export type TravelStats = {
+  summary: {
+    countriesVisited: number
+    totalPlaces: number
+    totalDays: number
+    firstVisitAt: string | null
+    lastVisitAt: string | null
+  }
+  countries: CountryStat[]
+  streak: {
+    longestDays: number
+    iso2: string
+    name: string
+    continent: string | null
+  } | null
+  categories: { name: string; count: number }[]
+}

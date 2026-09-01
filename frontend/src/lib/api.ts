@@ -1,4 +1,4 @@
-import type { Place, UnlockedEntry, CountryFetchStatus, ExplorationEntry } from "@/types/place"
+import type { Place, UnlockedEntry, CountryFetchStatus, ExplorationEntry, TravelStats } from "@/types/place"
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000"
 
@@ -41,7 +41,14 @@ export async function unlockPlace(placeId: string, latitude: number, longitude: 
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify({ placeId, latitude, longitude }),
+    // timezoneOffsetMinutes: minutes to ADD to UTC for the traveler's local
+    // time at check-in (east positive). Drives "distinct calendar day" bucketing.
+    body: JSON.stringify({
+      placeId,
+      latitude,
+      longitude,
+      timezoneOffsetMinutes: -new Date().getTimezoneOffset(),
+    }),
   })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error ?? "Unlock failed")
@@ -50,5 +57,13 @@ export async function unlockPlace(placeId: string, latitude: number, longitude: 
 export async function fetchUnlockedCountries(): Promise<{ countryCodes: string[] }> {
   const res = await fetch(`${API_BASE}/places/unlocked-countries`, { credentials: "include" })
   if (!res.ok) throw new Error(`Failed to fetch unlocked countries: ${res.status}`)
+  return res.json()
+}
+
+// Materialized travel-summary dashboard (item 14). Reads only the per-identity
+// travel_stats rows — the server never scans the raw check-in log here.
+export async function fetchStats(): Promise<TravelStats> {
+  const res = await fetch(`${API_BASE}/stats`, { credentials: "include" })
+  if (!res.ok) throw new Error(`Failed to fetch stats: ${res.status}`)
   return res.json()
 }
