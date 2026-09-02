@@ -33,11 +33,14 @@ function explorationOwnerFilter(owner: { userId?: string; guestId?: string }) {
 // depth:
 //   - leaf:            explored = placeId is in the identity's unlocked set.
 //   - internal place:  explored = every direct child is explored;
-//                      percent  = explored children weighted by each child's
-//                      geographic area (places.area, m²) — a large explored
-//                      district counts for more than a tiny one. Falls back to
-//                      child-count weighting when areas are unavailable
-//                      (pre-backfill).
+//                      percent  = area-weighted average of the DIRECT children's
+//                      percents (each child scaled by its geographic area,
+//                      places.area m²). A partially-explored child (West Arsi
+//                      6%) therefore contributes its 6% × its area to Oromia —
+//                      partial progress rolls up instead of vanishing until a
+//                      child is 100%. Leaf children are 0 or 100 so their case
+//                      is unchanged. Falls back to plain child-count weighting
+//                      when areas are unavailable (pre-backfill).
 // Write path: POST /places/unlock refreshes ONLY the unlocked leaf's ancestor
 // chain (refreshAncestors, O(depth)) instead of recomputing the whole country,
 // persisting each changed node immediately so a read never rebuilds hierarchy.
@@ -90,7 +93,7 @@ async function computeCountryExploration(
     }
     const childNodes = kids.map(visit)
     const percent = weightedPercent(
-      childNodes.map((c) => ({ explored: c.explored, area: areaById.get(c.placeId) ?? null }))
+      childNodes.map((c) => ({ percent: c.percent, area: areaById.get(c.placeId) ?? null }))
     )
     const node = { placeId: id, explored: childNodes.every((c) => c.explored), percent }
     result.set(id, node)
@@ -139,23 +142,24 @@ async function upsertExploration(node: ExplorationNode, owner: Owner) {
 }
 
 // Weighted child aggregation for a node's percentage. Each child contributes
-// proportionally to its geographic area (m²); when no areas are present
-// (pre-backfill) it degrades to plain child-count weighting. A parent is only
-// "explored" when every child is explored — full coverage is still required.
-function weightedPercent(
-  children: { explored: boolean; area: number | null }[]
-): number {
-  let exploredWeight = 0
-  let totalWeight = 0
+// its own percent (0..100) scaled by its geographic area (m²) — so a
+// partially-explored child (e.g. a zone at 6%) rolls its 6% up to its parent
+// in proportion to its size, rather than counting as 0 until fully explored.
+// When no areas are present (pre-backfill) it degrades to a plain average of
+// the children's percents. A parent is only "explored" when every child is
+// explored — full coverage is still required for the boolean flag.
+function weightedPercent(children: { percent: number; area: number | null }[]): number {
+  let exploredArea = 0
+  let totalArea = 0
   for (const c of children) {
     const w = c.area ?? 0
-    totalWeight += w
-    if (c.explored) exploredWeight += w
+    totalArea += w
+    exploredArea += w * (c.percent / 100)
   }
-  if (totalWeight > 0) return Math.round((exploredWeight / totalWeight) * 100)
+  if (totalArea > 0) return (exploredArea / totalArea) * 100
   if (children.length === 0) return 0
-  const exploredCount = children.filter((c) => c.explored).length
-  return Math.round((exploredCount / children.length) * 100)
+  const totalPercent = children.reduce((sum, c) => sum + c.percent, 0)
+  return totalPercent / children.length
 }
 
 // Incremental roll-up after a leaf unlock: touch ONLY the ancestor chain
@@ -177,7 +181,12 @@ async function refreshAncestors(leafPlaceId: string, owner: Owner): Promise<void
     if (!parentId) break // reached the country root
 
     const childrenRows = await db
-      .select({ id: places.id, area: places.area, explored: placeExploration.explored })
+      .select({
+        id: places.id,
+        area: places.area,
+        explored: placeExploration.explored,
+        percent: placeExploration.percent,
+      })
       .from(places)
       .leftJoin(
         placeExploration,
@@ -190,8 +199,14 @@ async function refreshAncestors(leafPlaceId: string, owner: Owner): Promise<void
       )
       .where(eq(places.parentId, parentId))
 
+    // Each child's real progress: the stored roll-up when it has one, else a
+    // leaf that's unlocked (100) or untouched (0). A partial child (zone at 6%)
+    // keeps its 6% so it flows up to the parent instead of vanishing.
     const percent = weightedPercent(
-      childrenRows.map((c) => ({ explored: c.explored ?? false, area: c.area }))
+      childrenRows.map((c) => ({
+        percent: c.percent ?? (c.explored ? 100 : 0),
+        area: c.area,
+      }))
     )
     const explored = childrenRows.length > 0 && childrenRows.every((c) => c.explored)
     const node: ExplorationNode = { placeId: parentId, explored, percent }

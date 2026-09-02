@@ -31,7 +31,7 @@ import { getCategoryIcon, getIconList } from "@/lib/categoryDisplay"
 import { IconStack } from "@/components/ui/icon-stack"
 import { useRecentlyVisited } from "@/hooks/useRecentlyVisited"
 import { useExploreProgress } from "@/hooks/useExploreProgress"
-import ExploreProgress from "./ExploreProgress"
+import ExploreProgress, { formatExplorePercent } from "./ExploreProgress"
 import { useIsMobile } from "@/hooks/use-mobile"
 
 const Sidebar = () => {
@@ -507,7 +507,7 @@ const Sidebar = () => {
               />
             </svg>
             <span className="absolute inset-0 flex items-center justify-center whitespace-nowrap text-[9px] font-semibold leading-none text-foreground tabular-nums">
-              {exploreProgress ? `${exploreProgress.percent}%` : "–"}
+              {exploreProgress ? formatExplorePercent(exploreProgress.percent) : "–"}
             </span>
           </div>
         </div>

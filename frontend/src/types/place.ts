@@ -15,7 +15,9 @@ export type UnlockedEntry = {
 
 // Per-node exploration roll-up, persisted server-side per identity (see
 // GET /places/exploration). `percent` is the bottom-up aggregate for a node —
-// a leaf is 0 or 100, an internal place is exploredChildren / totalChildren.
+// a leaf is 0 or 100; an internal place is the AREA-WEIGHTED AVERAGE of its
+// children's percents (a partially-explored child rolls its share up to the
+// parent). Double precision, so a tiny-but-real share isn't truncated to 0.
 export type ExplorationEntry = {
   placeId: string
   explored: boolean

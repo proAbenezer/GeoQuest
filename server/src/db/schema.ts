@@ -111,10 +111,14 @@ export const unlockedPlaces = pgTable(
 // The unlock logic decides which LEAF divisions a user has physically visited
 // (that is `unlockedPlaces` above). A place's "explored" flag and percentage are
 // the bottom-up roll-up of those leaves: a parent is fully explored when every
-// direct child is explored, and percent = explored direct children / total
-// direct children. These rows are recomputed and persisted at write time (POST
-// /places/unlock) so reads never rebuild the hierarchy. Stored per identity
-// (user or guest), keyed exactly like `unlockedPlaces`.
+// direct child is explored, and percent is the AREA-WEIGHTED AVERAGE of the
+// children's percents — a partially-explored child (a zone at 6%) rolls its 6%
+// up to its parent scaled by its area, instead of contributing nothing until
+// fully explored. Double precision, so a real but tiny share (Oromia at ~0.5%
+// after one woreda) isn't truncated to integer 0. These rows are recomputed and
+// persisted at write time (POST /places/unlock) so reads never rebuild the
+// hierarchy. Stored per identity (user or guest), keyed exactly like
+// `unlockedPlaces`.
 export const placeExploration = pgTable(
   "place_exploration",
   {
@@ -125,7 +129,7 @@ export const placeExploration = pgTable(
     userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
     guestId: uuid("guest_id").references(() => guests.id, { onDelete: "cascade" }),
     explored: boolean("explored").notNull().default(false),
-    percent: integer("percent").notNull().default(0),
+    percent: doublePrecision("percent").notNull().default(0),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (table) => ({
