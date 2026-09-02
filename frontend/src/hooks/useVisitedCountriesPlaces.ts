@@ -16,35 +16,51 @@ export function useVisitedCountriesPlaces(iso2: string | null, unlocked: Unlocke
   // fetching any that aren't already cached locally. This runs regardless of
   // whether live geolocation ever resolves — GPS status should never gate
   // whether previously-unlocked places render.
+  //
+  // Robustness/perf (a phone with a slow link reported a long initial load):
+  // missing countries are fetched in PARALLEL and each one is isolated, so one
+  // flaky download can't stall the rest; every country is checked against the
+  // local cache first so we never re-download a full tree we already have on
+  // device; and the per-iso2 in-flight dedupe in api.ts shares one request with
+  // the current-GPS country fetch racing the same code.
   useEffect(() => {
     if (seededRef.current) return
     seededRef.current = true
     ;(async () => {
-      const localIso2List = await getCachedCountryList()
-      if (localIso2List?.length) {
-        for (const code of localIso2List) {
-          const cached = await getCachedPlaces(code)
-          if (cached) placesByCountry.current.set(code, cached)
-        }
+      const localIso2List = await getCachedCountryList().catch(() => null)
+      for (const code of localIso2List ?? []) {
+        const cached = await getCachedPlaces(code).catch(() => null)
+        if (cached) placesByCountry.current.set(code, cached)
+      }
+      if (placesByCountry.current.size) {
         setAllPlaces(Array.from(placesByCountry.current.values()).flat())
       }
 
       try {
         const { countryCodes } = await fetchUnlockedCountries()
         const missing = countryCodes.filter((code) => !placesByCountry.current.has(code))
-        for (const code of missing) {
-          const data = await fetchCountryPlaces(code)
-          if (data.status === "cached") {
-            placesByCountry.current.set(code, data.places)
-            await setCachedPlaces(code, data.places)
-          }
-        }
-        if (missing.length) {
-          setAllPlaces(Array.from(placesByCountry.current.values()).flat())
-        }
+        await Promise.all(
+          missing.map(async (code) => {
+            try {
+              const cached = await getCachedPlaces(code).catch(() => null)
+              if (cached) {
+                placesByCountry.current.set(code, cached)
+                return
+              }
+              const data = await fetchCountryPlaces(code)
+              if (data.status === "cached") {
+                placesByCountry.current.set(code, data.places)
+                await setCachedPlaces(code, data.places)
+              }
+            } catch (err) {
+              console.warn(`Failed to seed unlocked-country places for ${code}:`, err)
+            }
+          })
+        )
       } catch (err) {
-        console.error("Failed to load unlocked countries:", err)
+        console.warn("Failed to load unlocked countries:", err)
       }
+      setAllPlaces(Array.from(placesByCountry.current.values()).flat())
     })()
   }, [])
 

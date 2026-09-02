@@ -2,10 +2,27 @@ import type { Place, UnlockedEntry, CountryFetchStatus, ExplorationEntry, Travel
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000"
 
-export async function fetchCountryPlaces(iso2: string): Promise<{ status: CountryFetchStatus; places: Place[] }> {
-  const res = await fetch(`${API_BASE}/places/country/${iso2}`, { credentials: "include" })
-  if (!res.ok) throw new Error(`Failed to fetch country ${iso2}: ${res.status}`)
-  return res.json()
+// One full country tree is a multi-MB download, and two independent parts of the
+// app can ask for the same iso2 at once (boot seeding of previously-unlocked
+// countries vs. the current-GPS country fetch). Dedupe so concurrent callers
+// share a single request instead of downloading the same payload twice on a
+// slow mobile link. The map clears on settle; callers still each get the result.
+const countryFetchInFlight = new Map<string, Promise<{ status: CountryFetchStatus; places: Place[] }>>()
+
+export function fetchCountryPlaces(iso2: string): Promise<{ status: CountryFetchStatus; places: Place[] }> {
+  const existing = countryFetchInFlight.get(iso2)
+  if (existing) return existing
+  const request = (async () => {
+    const res = await fetch(`${API_BASE}/places/country/${iso2}`, { credentials: "include" })
+    if (!res.ok) throw new Error(`Failed to fetch country ${iso2}: ${res.status}`)
+    return res.json()
+  })()
+  countryFetchInFlight.set(iso2, request)
+  request.then(
+    () => countryFetchInFlight.delete(iso2),
+    () => countryFetchInFlight.delete(iso2)
+  )
+  return request
 }
 
 export async function fetchUnlockedPlaces(): Promise<{ unlocked: UnlockedEntry[] }> {

@@ -112,6 +112,10 @@ export default function MapView() {
 
   const { places: allPlaces, currentCountryStatus } = useVisitedCountriesPlaces(iso2, unlocked)
 
+  // Server-persisted unlock set — deliberately EXCLUDES the optimistic fresh
+  // unlock below. The auto-unlock guard must only trust what the server has
+  // actually recorded, or a freshly-painted leaf would read as "already
+  // unlocked" and never trigger the POST that persists it.
   const unlockedIds = useMemo(() => new Set(unlocked.map((u) => u.placeId)), [unlocked])
   
   const { result, error: unlockError, checking } = useAutoUnlock(
@@ -267,10 +271,23 @@ export default function MapView() {
     })
   }
 
+  // Fog clearing must NOT wait on the refetch round-trip: on a flaky mobile
+  // network (or a mount refetch that failed and left the persisted list
+  // stale/empty) the server may have recorded the unlock while `unlocked`
+  // never updates — leaving the just-unlocked leaf greyed forever even though
+  // the banner says it unlocked. Merge the place the auto-unlock just reported
+  // so the map clears it the moment the result lands; the server list catches
+  // up on the next successful refetch and repaints are idempotent.
+  const unlockedLeafIds = useMemo(() => {
+    const ids = new Set(unlockedIds)
+    if (result?.unlocked && result.place?.id) ids.add(result.place.id)
+    return ids
+  }, [unlockedIds, result])
+
   const geojson = useMemo(() => {
     if (!allPlaces.length) return null
-    return placesToGeoJson(allPlaces, unlocked)
-  }, [allPlaces, unlocked])
+    return placesToGeoJson(allPlaces, unlockedLeafIds)
+  }, [allPlaces, unlockedLeafIds])
 
   // Force remove borders after map loads
   useEffect(() => {

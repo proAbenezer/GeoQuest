@@ -1,9 +1,11 @@
-import type { Place, UnlockedEntry } from "@/types/place"
+import type { Place } from "@/types/place"
 
 export type PlaceState = "locked" | "opened" | "unlocked"
 
-export function placesToGeoJson(places: Place[], unlocked: UnlockedEntry[]) {
-  const unlockedSet = new Set(unlocked.map((u) => u.placeId))
+// Takes a Set of unlocked LEAF place ids rather than the raw entries array so a
+// caller can merge in a just-unlocked place optimistically (see MapView) without
+// waiting for the persisted-list round-trip.
+export function placesToGeoJson(places: Place[], unlockedSet: ReadonlySet<string>) {
   const byId = new Map(places.map((p) => [p.id, p]))
   const childrenOf = new Map<string, string[]>()
 
