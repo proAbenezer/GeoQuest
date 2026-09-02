@@ -1,24 +1,20 @@
 // components/stats/WorldMap.tsx
 // Shaded world map for the stats dashboard. Fills every country the user has
 // check-ins in (their cached boundary polygons) with the brand color on the
-// dark basemap; unvisited countries stay as raw Mapbox terrain. Reuses the
-// same Mapbox integration + GeoJSON overlay pattern as MapView (same token,
-// same dark-v11 style) — a separate instance because this is a different route.
+// dark basemap; unvisited countries stay as raw Mapbox terrain.
+//
+// Presentational: the country-tree places are seeded ONCE by the page
+// (StatsPage) and passed in, so the world shading and the region-exploration
+// card share a single download instead of each fetching the full tree.
 import { useMemo } from "react"
 import Map from "react-map-gl/mapbox"
 import { Source, Layer } from "react-map-gl/mapbox"
-import { useUnlockedPlaces } from "@/hooks/useUnlockedPlaces"
-import { useVisitedCountriesPlaces } from "@/hooks/useVisitedCountriesPlaces"
+import type { Place } from "@/types/place"
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 const BRAND_COLOR = "#00B47B"
 
-export default function WorldMap() {
-  const { unlocked } = useUnlockedPlaces()
-  // Loads the cached boundaries of every country with unlock progress (IndexedDB
-  // first, server list for anything missing) — exactly the set to shade.
-  const { places } = useVisitedCountriesPlaces(null, unlocked)
-
+export default function WorldMap({ places }: { places: Place[] }) {
   const geojson = useMemo(() => {
     if (!places.length) return null
     const features = []

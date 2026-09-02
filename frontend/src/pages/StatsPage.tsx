@@ -1,25 +1,46 @@
 // pages/StatsPage.tsx
-// Travel-stats dashboard (item 14, full Phase 1 + 2). Reads the materialized
-// per-user summary from GET /stats and renders: headline numbers, a shaded
-// world map, places-by-country bars, a sortable per-country breakdown, and a
-// category breakdown. Empty state for identities with no check-ins yet.
+// Travel-stats dashboard. Standalone full-width route (ProtectedRoute only —
+// no sidebar), restyled to the app's glass/brand language: a sticky top bar
+// matching the Navbar, brand-chip hero tiles, and glass StatPanel sections.
+//
+// Reads the materialized per-user summary from GET /stats and layers on four
+// richer panels: a traveler profile band, a per-country region-exploration
+// breakdown, a recent-check-ins feed, and a category mix — all derived from
+// data the server already exposes (no new schema).
 import { useMemo, useState } from "react"
-import { Link } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import {
-  Globe2,
   MapPin,
+  Globe2,
   CalendarDays,
   Flame,
   RefreshCw,
   Loader2,
   Plane,
   ArrowLeft,
+  LogOut,
+  User,
 } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { useAuth } from "@/context/AuthContext"
+import { useUnlockedPlaces } from "@/hooks/useUnlockedPlaces"
+import { useVisitedCountriesPlaces } from "@/hooks/useVisitedCountriesPlaces"
 import { useTravelStats } from "@/hooks/useTravelStats"
+import { StatPanel } from "@/components/stats/StatPanel"
 import WorldMap from "@/components/stats/WorldMap"
-import StatsChart from "@/components/stats/StatsChart"
+import TravelerProfile from "@/components/stats/TravelerProfile"
+import RegionExploration from "@/components/stats/RegionExploration"
+import RecentCheckins from "@/components/stats/RecentCheckins"
+import CategoryMix from "@/components/stats/CategoryMix"
+import { formatExplorePercent } from "@/components/layout/sidebar/ExploreProgress"
 import type { CountryStat } from "@/types/place"
 
 type SortKey = "places" | "days" | "name"
@@ -31,34 +52,74 @@ function formatDate(iso: string | null): string {
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
 }
 
-function StatCard({
+// Hero number tile — brand-chip icon + big tabular numeral + small label,
+// echoing the sidebar's section language (rounded-xl translucent card).
+function HeroTile({
   label,
   value,
+  hint,
   icon: Icon,
 }: {
   label: string
   value: string | number
+  hint?: string
   icon: typeof MapPin
 }) {
   return (
-    <Card>
-      <CardContent className="flex items-center gap-3 p-4">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-          <Icon className="h-5 w-5 text-foreground" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-3xl font-bold leading-none tabular-nums">{value}</p>
-          <p className="mt-1 truncate text-sm text-muted-foreground">{label}</p>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="flex items-center gap-3 rounded-xl border border-border/40 bg-card/60 p-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/40">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        <Icon className="h-5 w-5" />
+      </span>
+      <div className="min-w-0">
+        <p className="text-2xl font-bold leading-none tabular-nums text-foreground">{value}</p>
+        <p className="mt-1 truncate text-xs text-muted-foreground">{label}</p>
+        {hint && <p className="truncate text-[11px] text-muted-foreground/70">{hint}</p>}
+      </div>
+    </div>
   )
 }
 
 export default function StatsPage() {
+  const { user, logout } = useAuth()
+  const navigate = useNavigate()
   const { data, loading, error, refresh } = useTravelStats()
+  // The world map shading + region-exploration card share ONE seed of the
+  // traveler's cached country trees (driven by their unlock progress).
+  const { unlocked } = useUnlockedPlaces()
+  const { places } = useVisitedCountriesPlaces(null, unlocked)
   const [sortKey, setSortKey] = useState<SortKey>("places")
   const [sortAsc, setSortAsc] = useState(false)
+
+  const unlockedIds = useMemo(() => new Set(unlocked.map((u) => u.placeId)), [unlocked])
+
+  // The country with the most unlocked places drives the region panel — for a
+  // traveler in Ethiopia that's the 11 ADM1 regions, otherwise we fall back to
+  // whatever tree is available for that country.
+  const mainCountry = useMemo<CountryStat | null>(() => {
+    if (!data || !data.countries.length) return null
+    return [...data.countries].sort((a, b) => b.places - a.places)[0]
+  }, [data])
+
+  const initials = user
+    ? `${user.firstName[0] ?? ""}${user.lastName[0] ?? ""}`.toUpperCase()
+    : "GQ"
+
+  const handleLogout = async () => {
+    try {
+      await logout()
+      navigate("/login")
+    } catch {
+      /* stay put on failure */
+    }
+  }
+
+  const onRefresh = async () => {
+    try {
+      await refresh()
+    } catch {
+      /* handled by hook error state */
+    }
+  }
 
   const sortedCountries = useMemo(() => {
     if (!data) return []
@@ -83,185 +144,214 @@ export default function StatsPage() {
     <button
       type="button"
       onClick={() => toggleSort(k)}
-      className="inline-flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground"
+      className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
     >
       {label}
-      {sortKey === k && <span className="text-foreground">{sortAsc ? "▲" : "▼"}</span>}
+      {sortKey === k && <span className="text-primary">{sortAsc ? "▲" : "▼"}</span>}
     </button>
   )
 
-  if (!data) {
-    return (
-      <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-6">
-        <Link
-          to="/"
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to map
-        </Link>
-        <div className="flex min-h-[50vh] items-center justify-center">
-          {loading ? (
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          ) : error ? (
-            <div className="flex flex-col items-center gap-3 p-6 text-center">
-              <p className="text-muted-foreground">{error}</p>
-              <Button onClick={refresh}>Retry</Button>
-            </div>
-          ) : null}
-        </div>
-      </div>
-    )
-  }
-
-  const { summary, countries, streak, categories } = data
-
-  if (summary.totalPlaces === 0) {
-    return (
-      <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-6">
-        <Link
-          to="/"
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to map
-        </Link>
-        <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 p-6 text-center">
-          <Plane className="h-10 w-10 text-muted-foreground" />
-          <h2 className="text-lg font-semibold">No travels yet</h2>
-          <p className="max-w-sm text-sm text-muted-foreground">
-            Your travel stats will appear here once you check in somewhere. Head to the map and
-            let your location be detected, or tap{" "}
-            <span className="font-medium text-foreground">Check in</span>.
-          </p>
-          <Link to="/">
-            <Button>Go to map</Button>
-          </Link>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-6">
-      <Link
-        to="/"
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to map
-      </Link>
-
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Your travel stats</h1>
-        <Button variant="ghost" size="sm" onClick={refresh} className="gap-1">
-          <RefreshCw className="h-4 w-4" /> Refresh
-        </Button>
-      </div>
-
-      {/* Headline numbers */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Countries visited" value={summary.countriesVisited} icon={Globe2} />
-        <StatCard label="Places visited" value={summary.totalPlaces} icon={MapPin} />
-        <StatCard label="Days traveled" value={summary.totalDays} icon={CalendarDays} />
-        <StatCard
-          label={streak ? `Longest streak · ${streak.name}` : "Longest streak"}
-          value={streak ? `${streak.longestDays}d` : "—"}
-          icon={Flame}
-        />
-      </div>
-
-      {/* World map + bar chart */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">World</CardTitle>
-          </CardHeader>
-          <CardContent className="h-64 p-0">
-            <WorldMap />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Places by country</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <StatsChart countries={countries} />
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Sortable per-country breakdown */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Breakdown</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left">
-                  <th className="px-4 py-2">
-                    <SortHeader label="Country" k="name" />
-                  </th>
-                  <th className="px-4 py-2 text-right">
-                    <SortHeader label="Places" k="places" />
-                  </th>
-                  <th className="px-4 py-2 text-right">
-                    <SortHeader label="Days" k="days" />
-                  </th>
-                  <th className="px-4 py-2 text-right">Explored</th>
-                  <th className="px-4 py-2 text-right">First visit</th>
-                  <th className="px-4 py-2 text-right">Last visit</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedCountries.map((c: CountryStat) => (
-                  <tr key={c.iso2} className="border-b border-border/60 last:border-0">
-                    <td className="px-4 py-2.5">
-                      <div className="font-medium">{c.name}</div>
-                      <div className="text-xs text-muted-foreground">{c.continent ?? c.iso2}</div>
-                    </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{c.places}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{c.days}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">
-                      {c.explorationPercent != null ? `${c.explorationPercent}%` : "—"}
-                    </td>
-                    <td className="px-4 py-2.5 text-right text-muted-foreground">
-                      {formatDate(c.firstVisitAt)}
-                    </td>
-                    <td className="px-4 py-2.5 text-right text-muted-foreground">
-                      {formatDate(c.lastVisitAt)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+    <div className="min-h-screen bg-background">
+      {/* ---- Top bar — mirrors the Navbar's sticky glass bar ---- */}
+      <header className="sticky top-0 z-40 flex items-center gap-3 border-b border-border/40 bg-background/90 px-4 py-2.5 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <Link to="/" className="flex shrink-0 items-center gap-2.5" aria-label="GeoQuest home">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-sm">
+            <MapPin className="h-4 w-4" />
           </div>
-        </CardContent>
-      </Card>
+          <span className="hidden font-heading text-lg font-semibold tracking-tight sm:inline">
+            GeoQuest
+          </span>
+        </Link>
+        <span className="hidden h-4 w-px bg-border/60 sm:block" />
+        <h1 className="text-sm font-semibold text-foreground">Travel stats</h1>
+        <div className="ml-auto flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={onRefresh} className="gap-1 text-sm">
+            <RefreshCw className="h-3.5 w-3.5" /> Refresh
+          </Button>
+          <Link
+            to="/"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border/40 bg-card/40 px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:border-border/60 hover:text-foreground"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Map</span>
+          </Link>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Avatar className="h-8 w-8 cursor-pointer rounded-lg bg-primary/10 text-primary shadow-sm transition-all hover:bg-primary/20">
+                  <AvatarImage src={user?.profileImage} alt={user?.username ?? "Profile"} />
+                  <AvatarFallback className="bg-transparent text-primary text-xs font-medium">
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
+              }
+            />
+            <DropdownMenuContent
+              align="end"
+              className="rounded-xl border-border/40 bg-background/95 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/60"
+            >
+              <DropdownMenuItem
+                onClick={() => navigate("/profile")}
+                className="gap-2 rounded-lg text-sm hover:bg-muted/40"
+              >
+                <User className="h-4 w-4" /> Profile
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="bg-border/40" />
+              <DropdownMenuItem
+                onClick={handleLogout}
+                className="gap-2 rounded-lg text-sm text-destructive hover:bg-destructive/10"
+              >
+                <LogOut className="h-4 w-4" /> Log out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </header>
 
-      {/* Category breakdown */}
-      {categories.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Categories</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {categories.map((c, i) => (
-                <span
-                  key={`${i}-${c.name}`}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/50 px-3 py-1 text-sm"
-                >
-                  {c.name}
-                  <span className="text-xs text-muted-foreground">{c.count}</span>
-                </span>
-              ))}
+      <div className="mx-auto max-w-7xl space-y-5 px-4 py-6 md:px-6">
+        {!data ? (
+          <div className="flex min-h-[55vh] items-center justify-center">
+            {loading ? (
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            ) : error ? (
+              <div className="flex flex-col items-center gap-3 p-6 text-center">
+                <p className="text-sm text-muted-foreground">{error}</p>
+                <Button onClick={onRefresh}>Retry</Button>
+              </div>
+            ) : null}
+          </div>
+        ) : data.summary.totalPlaces === 0 ? (
+          <div className="flex min-h-[55vh] flex-col items-center justify-center gap-3 p-6 text-center">
+            <Plane className="h-10 w-10 text-muted-foreground" />
+            <h2 className="text-lg font-semibold">No travels yet</h2>
+            <p className="max-w-sm text-sm text-muted-foreground">
+              Your travel stats will appear here once you check in somewhere. Head to the map and
+              let your location be detected, or tap{" "}
+              <span className="font-medium text-foreground">Check in</span>.
+            </p>
+            <Link to="/">
+              <Button>Go to map</Button>
+            </Link>
+          </div>
+        ) : (
+          <>
+            {/* Hero numbers */}
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <HeroTile
+                icon={Globe2}
+                label="Countries explored"
+                value={data.summary.countriesVisited}
+              />
+              <HeroTile icon={MapPin} label="Places unlocked" value={data.summary.totalPlaces} />
+              <HeroTile
+                icon={CalendarDays}
+                label="Active days"
+                value={data.summary.totalDays}
+                hint={`${formatDate(data.summary.firstVisitAt)} – ${formatDate(data.summary.lastVisitAt)}`}
+              />
+              <HeroTile
+                icon={Flame}
+                label={data.streak ? `Longest streak · ${data.streak.name}` : "Longest streak"}
+                value={data.streak ? `${data.streak.longestDays}d` : "—"}
+              />
             </div>
-          </CardContent>
-        </Card>
-      )}
+
+            {/* Traveler profile band */}
+            <TravelerProfile summary={data.summary} countries={data.countries} />
+
+            {/* World + region exploration */}
+            <div className="grid gap-5 lg:grid-cols-5">
+              <StatPanel
+                icon={Globe2}
+                title="World"
+                subtitle={`${data.countries.length} countr${data.countries.length === 1 ? "y" : "ies"} visited`}
+                className="h-full lg:col-span-3"
+                bodyClassName="flex flex-col"
+              >
+                <div className="relative min-h-[16rem] flex-1 overflow-hidden rounded-xl border border-border/40">
+                  <div className="absolute inset-0">
+                    <WorldMap places={places} />
+                  </div>
+                </div>
+              </StatPanel>
+              {mainCountry && (
+                <div className="h-full lg:col-span-2">
+                  <RegionExploration
+                    iso2={mainCountry.iso2}
+                    name={mainCountry.name}
+                    overall={mainCountry.explorationPercent}
+                    unlockedIds={unlockedIds}
+                    places={places}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Recent activity + category mix */}
+            <div className="grid gap-5 lg:grid-cols-2">
+              <RecentCheckins />
+              <CategoryMix categories={data.categories} />
+            </div>
+
+            {/* Sortable per-country breakdown */}
+            <StatPanel
+              icon={MapPin}
+              title="All countries"
+              subtitle="Sorted by places — tap a column header to reorder"
+              action={
+                <Button variant="ghost" size="sm" onClick={onRefresh} className="gap-1 text-xs">
+                  <RefreshCw className="h-3 w-3" /> Refresh
+                </Button>
+              }
+            >
+              <div className="overflow-x-auto rounded-lg border border-border/40">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border/60 bg-muted/30 text-left">
+                      <th className="px-4 py-2.5">
+                        <SortHeader label="Country" k="name" />
+                      </th>
+                      <th className="px-4 py-2.5 text-right">
+                        <SortHeader label="Places" k="places" />
+                      </th>
+                      <th className="px-4 py-2.5 text-right">
+                        <SortHeader label="Days" k="days" />
+                      </th>
+                      <th className="px-4 py-2.5 text-right">Explored</th>
+                      <th className="px-4 py-2.5 text-right">First visit</th>
+                      <th className="px-4 py-2.5 text-right">Last visit</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedCountries.map((c: CountryStat) => (
+                      <tr key={c.iso2} className="border-b border-border/40 last:border-0">
+                        <td className="px-4 py-2.5">
+                          <div className="font-medium text-foreground">{c.name}</div>
+                          <div className="text-xs text-muted-foreground">{c.continent ?? c.iso2}</div>
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">{c.places}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">{c.days}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">
+                          {c.explorationPercent != null
+                            ? formatExplorePercent(c.explorationPercent)
+                            : "—"}
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-muted-foreground">
+                          {formatDate(c.firstVisitAt)}
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-muted-foreground">
+                          {formatDate(c.lastVisitAt)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </StatPanel>
+          </>
+        )}
+      </div>
     </div>
   )
 }
