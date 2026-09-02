@@ -4,11 +4,14 @@
 // from the server (GET /places/exploration — the client never recomputes the
 // hierarchy), then picks which region to display:
 //
-//   - Live GPS fix (geolocate on): the TOP-LEVEL region whose boundary contains
-//     the fix — the place you are physically in ("Addis Ababa Explored" when in
-//     Addis), regardless of how the map is zoomed or panned. Deterministic:
-//     zooming out over Addis + neighbouring regions can no longer slip the label
-//     onto the neighbouring Oromia zone that merely contains the map's centre.
+//   - Live GPS fix (geolocate on): the region you are physically in, shown at
+//     the ZOOM's granularity. The fix anchors an ancestor chain country → …
+//     → the place underfoot; of that chain the bar shows the BIGGEST region that
+//     is FULLY on screen. Zoomed out over all of Ethiopia → "Ethiopia Explored";
+//     zoomed to Addis Ababa → "Addis Ababa Explored"; zoomed into the sub-city
+//     you stand in (Yeka) → "Yeka Explored". Because the base is your location,
+//     the map centre drifting over a neighbouring region (a North Shewa zone)
+//     can never steal the label — zooming is what moves the bar up the chain.
 //   - No GPS yet: follow the map viewport (what's on screen):
 //       - No viewport (map not loaded / not on the map route): the country's
 //         aggregate ("Ethiopia Explored").
@@ -24,11 +27,11 @@
 //         subtree, so the aggregate never mixes in neighbouring regions.
 //
 // Granularity is generic — driven entirely by the self-referencing places tree,
-// never a hardcoded admin depth. The viewport branch's "footprint" of a
-// division is approximated by the bbox of its boundary geometry (flagged
-// deliberately — exact polygon tests per pan/zoom would be far heavier). The
-// GPS branch does one exact point-in-polygon test per fix over the handful of
-// top-level regions instead, so attribution to "where you are" is precise.
+// never a hardcoded admin depth. "Fully on screen" and the viewport branch's
+// "footprint" both approximate a division by the bbox of its boundary geometry
+// (flagged deliberately — exact polygon tests per pan/zoom would be far
+// heavier). The GPS branch does one exact point-in-polygon test per fix over
+// the handful of top-level regions to anchor the chain, then bbox tests below.
 import { useMemo, useState, useEffect, useRef } from "react"
 import * as turf from "@turf/turf"
 import { usePins } from "@/context/usePins"
@@ -99,6 +102,14 @@ function bboxVisibleFraction(a: BBox, viewport: BBox): number {
   const interH = Math.min(a[3], viewport[3]) - Math.max(a[1], viewport[1])
   if (interW <= 0 || interH <= 0) return 0
   return (interW * interH) / area
+}
+
+// a's bbox sits entirely inside the viewport bbox → the region is FULLY on
+// screen (its bounding box is a superset of it, so the region itself is too).
+// The GPS branch uses this: of the location's ancestor chain, the biggest
+// region you can currently see whole is the one worth showing (see the header).
+function bboxFullyVisible(a: BBox, viewport: BBox): boolean {
+  return a[0] >= viewport[0] && a[1] >= viewport[1] && a[2] <= viewport[2] && a[3] <= viewport[3]
 }
 
 // Every leaf in the subtree rooted at `rootId` (the root itself when it's a
@@ -251,28 +262,80 @@ export function useExploreProgress(): ExploreProgress {
     const { rootId, countryTitle, children, nameById, bboxCache, topLevel, entryFor } =
       countryIndex
 
-    // Live GPS fix present → the bar is anchored to the region you are
-    // PHYSICALLY in, not whatever is under the map's centre pixel. Test the fix
-    // against each top-level region's exact polygon (bbox point-in-box is not
-    // reliable at borders); if it falls in none — fix outside the country, or
-    // still inside a hole — show the country aggregate.
+    // Live GPS fix present → the bar is the region you are PHYSICALLY in,
+    // chosen at the ZOOM's granularity. The fix anchors a chain country → … →
+    // the exact place underfoot: the root's child is found by exact polygon
+    // (bbox is not reliable at borders), then each deeper child by bbox (the
+    // same heuristic the viewport path uses). Of that chain, show the BIGGEST
+    // region that currently fits ENTIRELY on screen — zoomed out over all of
+    // Ethiopia → Ethiopia; zoomed to Addis Ababa → Addis Ababa; zoomed into a
+    // sub-city → that sub-city. The centre drifting over a neighbouring region
+    // (North Shewa) can never steal the label because the base is the fix.
     if (gpsLocation) {
-      const pt = turf.point([gpsLocation.longitude, gpsLocation.latitude])
-      const region = topLevel.find((t) => {
+      const glng = gpsLocation.longitude
+      const glat = gpsLocation.latitude
+      const pt = turf.point([glng, glat])
+
+      // Top-level region containing the fix — exact polygon test.
+      const top = topLevel.find((t) => {
         try {
           return turf.booleanPointInPolygon(pt, t.geom)
         } catch {
           return false
         }
       })
-      if (region) {
-        prevPick.current = null // region picks no longer track the viewport
-        return {
-          title: `${nameById.get(region.id) ?? "This area"} Explored`,
-          percent: entryFor(region.id).percent,
+      // Fix outside the country, or in a hole between top regions → the
+      // country aggregate is all we can honestly claim.
+      if (!top) return { title: countryTitle, percent: entryFor(rootId).percent }
+
+      // Descend root → … → the deepest place containing the fix. Stop when no
+      // child's bbox contains the point — that node is the leaf underfoot.
+      const chain = [rootId, top.id]
+      let cur = top.id
+      for (let guard = 0; guard < 64; guard++) {
+        const kids = (children.get(cur) ?? []).filter((k) => {
+          const kb = bboxCache.get(k)
+          return (
+            !!kb &&
+            kb[0] <= glng &&
+            kb[2] >= glng &&
+            kb[1] <= glat &&
+            kb[3] >= glat
+          )
+        })
+        if (kids.length === 0) break
+        // Several overlapping bboxes can contain a border point — take the
+        // smallest (most specific) as the parent we keep descending through.
+        kids.sort((a, b) => bboxArea(bboxCache.get(a)!) - bboxArea(bboxCache.get(b)!))
+        cur = kids[0]
+        chain.push(cur)
+      }
+
+      // Biggest fully-visible ancestor: scan root → leaf and keep the FIRST
+      // whose whole footprint is inside the viewport. Zoomed out so the whole
+      // country fits → the root wins and the bar reads the country roll-up;
+      // zoomed in so only the sub-city fits → the sub-city wins.
+      if (mapBounds) {
+        for (const id of chain) {
+          const bb = bboxCache.get(id)
+          if (bb && bboxFullyVisible(bb, mapBounds)) {
+            prevPick.current = null // GPS picks don't feed viewport hysteresis
+            return {
+              title: `${nameById.get(id) ?? "This area"} Explored`,
+              percent: entryFor(id).percent,
+            }
+          }
         }
       }
-      return { title: countryTitle, percent: entryFor(rootId).percent }
+
+      // Nothing on the chain is fully on screen (GPS on but the map panned
+      // away, or the fix hugging the viewport edge) — stay on the deepest place
+      // containing the fix rather than bouncing up to the country.
+      const id = chain[chain.length - 1]
+      return {
+        title: `${nameById.get(id) ?? "This area"} Explored`,
+        percent: entryFor(id).percent,
+      }
     }
 
     // No viewport yet → whole-country aggregate.

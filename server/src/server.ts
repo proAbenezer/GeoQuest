@@ -8,6 +8,28 @@ import { countryFetchStatus } from "./db/schema.js"
 const port = process.env.PORT ? Number(process.env.PORT) : 4000
 
 async function start() {
+  if (!process.env.DATABASE_URL) {
+    console.error(
+      "DATABASE_URL is not set. Add it under Render → your web service → Environment " +
+        "(use the Postgres service's Internal Database URL). Refusing to start."
+    )
+    process.exit(1)
+  }
+
+  // The place schema stores boundaries as PostGIS geometry(...) columns, so the
+  // extension must exist before Drizzle can create those tables. IF NOT EXISTS
+  // keeps this a cheap no-op on databases that already have it (e.g. local dev).
+  try {
+    await db.execute(sql`CREATE EXTENSION IF NOT EXISTS postgis`)
+    console.log("PostGIS extension ensured")
+  } catch (error) {
+    console.error(
+      "Failed to enable PostGIS — check that DATABASE_URL is reachable and the user owns the database.",
+      error
+    )
+    process.exit(1)
+  }
+
   // Apply pending schema migrations before accepting traffic. Render's build
   // step never compiles or runs drizzle-kit, so this is the only place the
   // migrations are guaranteed to run on every deploy. No-op once applied
