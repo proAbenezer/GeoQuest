@@ -14,10 +14,12 @@ if (!connectionString) {
 
 // Log the host we're really connecting to (credentials stripped) so a deploy log
 // makes a misconfigured DATABASE_URL obvious — e.g. it should show a
-// *.render.com host, never "localhost".
+// *.render.com host, never "localhost". Use hostname (not host): host already
+// includes the port, so host + a separate `:${port}` would double-print it.
 try {
-  const { protocol, host, port, pathname } = new URL(connectionString)
-  console.log(`[db] connecting to ${protocol}//${host}:${port}${pathname}`)
+  const { protocol, hostname, port, pathname } = new URL(connectionString)
+  const suffix = port ? `:${port}` : ""
+  console.log(`[db] connecting to ${protocol}//${hostname}${suffix}${pathname}`)
 } catch {
   console.warn("[db] DATABASE_URL is not a valid URL")
 }
