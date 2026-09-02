@@ -13,54 +13,11 @@ import SavedPlacesPanel from "@/components/layout/savedPlace/SavedPlacesPanel"
 import AddCommentPanel from "@/components/comments/AddCommentPanel"
 import { CategoriesProvider } from "@/context/useCategories"
 import { Toaster } from "sonner"
-import { useMemo, useEffect, useRef } from "react"
+import { useMemo } from "react"
 
 function AppLayoutContent() {
-  const { state, open, setOpen, openMobile, setOpenMobile } = useSidebar()
-  const { pins, secondaryPanel, setSecondaryPanel, filterPanelOpen, openFilterPanel, commentViewOpen, openCommentView } = usePins()
-
-  // ---- Single-sidebar-open policy, main nav sidebar included ----
-  // The overlay sidebars (secondaryPanel / filter / comment view) coordinate
-  // with each other inside `usePins`. The main nav sidebar's open state lives
-  // in the SidebarProvider, which wraps this layout — so the cross-sidebar
-  // coordination has to happen here, where both contexts are in scope.
-
-  // Opening the main nav sidebar (expand on desktop / mobile sheet) closes any
-  // other sidebar that is currently open.
-  const wasNavOpenRef = useRef(open)
-  useEffect(() => {
-    const opened = open && !wasNavOpenRef.current
-    wasNavOpenRef.current = open
-    if (opened) {
-      setSecondaryPanel(null)
-      openFilterPanel(false)
-      openCommentView(false)
-    }
-  }, [open, setSecondaryPanel, openFilterPanel, openCommentView])
-
-  const wasNavOpenMobileRef = useRef(openMobile)
-  useEffect(() => {
-    const opened = openMobile && !wasNavOpenMobileRef.current
-    wasNavOpenMobileRef.current = openMobile
-    if (opened) {
-      setSecondaryPanel(null)
-      openFilterPanel(false)
-      openCommentView(false)
-    }
-  }, [openMobile, setSecondaryPanel, openFilterPanel, openCommentView])
-
-  // Opening any other sidebar collapses the main nav sidebar, so only one
-  // sidebar is ever visible at a time.
-  const otherSidebarOpen = secondaryPanel !== null || filterPanelOpen || commentViewOpen
-  const wasOtherSidebarOpenRef = useRef(otherSidebarOpen)
-  useEffect(() => {
-    const opened = otherSidebarOpen && !wasOtherSidebarOpenRef.current
-    wasOtherSidebarOpenRef.current = otherSidebarOpen
-    if (opened) {
-      setOpen(false)
-      setOpenMobile(false)
-    }
-  }, [otherSidebarOpen, setOpen, setOpenMobile])
+  const { state } = useSidebar()
+  const { pins } = usePins()
 
   const visitedIso2 = useMemo(() => {
     const countries = new Set<string>()

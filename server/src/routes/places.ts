@@ -344,7 +344,9 @@ router.get("/country/:iso2", async (req, res) => {
       levelType: places.levelType,
       parentId: places.parentId,
       countryCode: places.countryCode,
-      boundary: sql<string>`ST_AsGeoJSON(${places.boundary})`,
+      // 6-decimal precision (~11 cm) is far below GPS error and the stored
+      // geometry is untouched — only the bytes sent over the wire shrink.
+      boundary: sql<string>`ST_AsGeoJSON(${places.boundary}, 6)`,
     })
     .from(places)
     .where(eq(places.countryCode, iso2))

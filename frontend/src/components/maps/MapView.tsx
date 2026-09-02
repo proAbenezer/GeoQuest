@@ -16,6 +16,8 @@ import { useVisitedCheckin } from "@/hooks/useVisitedCheckin"
 import { useVisitedCountriesPlaces } from "@/hooks/useVisitedCountriesPlaces"
 import { useUnlockedPlaces } from "@/hooks/useUnlockedPlaces"
 import { placesToGeoJson } from "@/lib/placesToGeoJson"
+import { reverseGeocodeClick } from "@/lib/reverseGeocode"
+import { osmNearestNamed, poiLabelAt } from "@/lib/poiFromClick"
 import TopCommentWidget from "@/components/comments/TopCommentWidget"
 import { Loader2, Route as RouteIcon } from "lucide-react"
 
@@ -68,6 +70,9 @@ function useViewportCountry(
 export default function MapView() {
   const mapRef = useRef<any>(null)
   const geolocateControlRef = useRef<mapboxgl.GeolocateControl | null>(null)
+  // Aborts the previous click's OpenStreetMap lookup when a new click lands, so
+  // a stale answer can never overwrite the current one.
+  const osmAbortRef = useRef<AbortController | null>(null)
   const [zoom, setZoom] = useState(12)
   const [showCommentRoutes, setShowCommentRoutes] = useState(true)
   const [commentRouteCount, setCommentRouteCount] = useState(0)
@@ -77,6 +82,7 @@ export default function MapView() {
     setMapBounds,
     setViewportCenter,
     viewportCenter,
+    setGpsLocation,
     setCountryIso2,
     bumpUnlockCount,
     setSecondaryPanel,
@@ -108,7 +114,7 @@ export default function MapView() {
 
   const unlockedIds = useMemo(() => new Set(unlocked.map((u) => u.placeId)), [unlocked])
   
-  const { result, error: unlockError } = useAutoUnlock(
+  const { result, error: unlockError, checking } = useAutoUnlock(
     location,
     allPlaces,
     currentCountryStatus,
@@ -136,6 +142,14 @@ export default function MapView() {
     setCountryIso2(iso2 ?? viewportCountryIso2 ?? null)
   }, [iso2, viewportCountryIso2, setCountryIso2])
 
+  // Mirror the live GPS fix into context so the exploration bar can anchor to
+  // the region the user is physically in, not the arbitrary viewport centre.
+  useEffect(() => {
+    setGpsLocation(
+      location ? { latitude: location.latitude, longitude: location.longitude } : null
+    )
+  }, [location, setGpsLocation])
+
   useEffect(() => {
     if (!flyToTarget || !mapRef.current) return
     const map = mapRef.current.getMap()
@@ -155,61 +169,102 @@ export default function MapView() {
     setViewportCenter({ latitude: center.lat, longitude: center.lng })
   }, [setMapBounds, setViewportCenter])
 
+  // Ask OpenStreetMap for the nearest named POI, but only within ~1.5s: past
+  // that, the click resolves to the reverse-geocoded area name instead. Aborts
+  // any previous request so rapid clicks don't queue stale lookups.
+  const osmNearestNamedWithin = async (latitude: number, longitude: number) => {
+    osmAbortRef.current?.abort()
+    const controller = new AbortController()
+    osmAbortRef.current = controller
+    const timer = setTimeout(() => controller.abort(), 1500)
+    try {
+      return await osmNearestNamed(latitude, longitude, controller.signal)
+    } catch {
+      return null
+    } finally {
+      clearTimeout(timer)
+      if (osmAbortRef.current === controller) osmAbortRef.current = null
+    }
+  }
+
   async function handleMapClick(e: any) {
     // Comment-route lines are a canvas layer, so a click on one never reaches
     // the HTML badge markers — detect it here via queryRenderedFeatures and
     // open the route-comment panel instead of reverse-geocoding the point.
     const map = mapRef.current?.getMap()
     if (map) {
-      const hit = map.queryRenderedFeatures(e.point, { layers: ["comment-routes-line", "comment-routes-casing"] })
-      if (hit.length > 0) {
-        const props = hit[0].properties
-        if (props?.routeStartPinId && props?.routeEndPinId) {
-          e.originalEvent?.stopPropagation?.()
-          // Selecting a route drives the comment widget (no side panel): close
-          // any open panels, deselect any highlighted pin, and mark the route.
-          setHighlightedPinId(null)
-          openCommentView(false)
-          setSecondaryPanel(null)
-          setSelectedRoute({
-            routeStartPinId: props.routeStartPinId,
-            routeEndPinId: props.routeEndPinId,
-          })
-          return
+      // The route overlay only exists while routes are visible (CommentRoutesLayer
+      // renders nothing otherwise), and queryRenderedFeatures *throws* — it doesn't
+      // return empty — when a named layer is absent from the style. Query only the
+      // layers that currently exist so a bare map click is never aborted before the
+      // reverse-geocode below runs.
+      const routeLayers = ["comment-routes-line", "comment-routes-casing"].filter(
+        (id) => map.getLayer(id)
+      )
+      if (routeLayers.length > 0) {
+        try {
+          const hit = map.queryRenderedFeatures(e.point, { layers: routeLayers })
+          if (hit.length > 0) {
+            const props = hit[0].properties
+            if (props?.routeStartPinId && props?.routeEndPinId) {
+              e.originalEvent?.stopPropagation?.()
+              // Selecting a route drives the comment widget (no side panel): close
+              // any open panels, deselect any highlighted pin, and mark the route.
+              setHighlightedPinId(null)
+              openCommentView(false)
+              setSecondaryPanel(null)
+              setSelectedRoute({
+                routeStartPinId: props.routeStartPinId,
+                routeEndPinId: props.routeEndPinId,
+              })
+              return
+            }
+          }
+        } catch (err) {
+          console.error("Route line query failed:", err)
         }
       }
     }
 
     const { lat, lng } = e.lngLat
-    try {
-      const response = await fetch(
-        `https://api.mapbox.com/search/geocode/v6/reverse?longitude=${lng}&latitude=${lat}&access_token=${MAPBOX_TOKEN}`
-      )
-      const data = await response.json()
-      const feature = data.features?.[0]
-      if (!feature) return
 
-      const placeId = feature.properties.mapbox_id || feature.id || `place_${Date.now()}`
-      const placeName = feature.properties.name || "Unknown Place"
-      const placeAddress = feature.properties.full_address || feature.properties.place_formatted || placeName
-
-      trackVisitedPlace({
-        placeId: placeId,
-        name: placeName,
-        address: placeAddress,
-        latitude: lat,
-        longitude: lng,
-      })
-
-      openPreview({
-        placeName: placeName,
-        address: placeAddress,
-        lat,
-        lng,
-      })
-    } catch (err) {
+    // Kick off the address/area lookup immediately — it runs while the exact-name
+    // sources below are checked.
+    const areaPromise = reverseGeocodeClick(lat, lng).catch((err) => {
       console.error("Reverse geocode failed:", err)
-    }
+      return null
+    })
+
+    // Exact name, best source first: mapbox's own POI label under the cursor
+    // (reads the tiles already on screen — synchronous), else the nearest named
+    // OpenStreetMap POI (capped ~1.5s so a slow answer can't hang the click).
+    // Reverse geocoding can never return a POI, so both are needed to get past
+    // the street name.
+    const label = poiLabelAt(map, e.point)
+    const osm = label ? null : await osmNearestNamedWithin(lat, lng)
+    const precise = label ?? osm
+
+    // Administrative context: the address line, plus the street/sub-city/city
+    // fallback when neither POI source found anything to name.
+    const area = await areaPromise
+    const placeName = precise?.name ?? area?.placeName ?? ""
+    const address = area?.address ?? ""
+    if (!placeName) return
+
+    trackVisitedPlace({
+      placeId: precise?.id ?? area?.placeId ?? `place_${lat.toFixed(5)},${lng.toFixed(5)}`,
+      name: placeName,
+      address,
+      latitude: lat,
+      longitude: lng,
+    })
+
+    openPreview({
+      placeName,
+      address,
+      lat,
+      lng,
+    })
   }
 
   const geojson = useMemo(() => {
@@ -272,7 +327,7 @@ export default function MapView() {
           </p>
         </div>
       )}
-      <UnlockStatusBanner result={result} error={unlockError ?? trackingError} />
+      <UnlockStatusBanner result={result} error={unlockError ?? trackingError} checking={checking} />
 
       {/* Route-comments toggle — the discoverable control for the route overlay.
           Only appears once a route has comments, and stays visible when hidden

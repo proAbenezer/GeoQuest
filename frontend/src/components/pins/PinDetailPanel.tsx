@@ -392,7 +392,7 @@ const PinDetailPanel = () => {
 
             <div>
               <label className="mb-1.5 block text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                Icons
+                Icon
               </label>
               <IconMultiSelect value={editIcons} onChange={setEditIcons} />
             </div>

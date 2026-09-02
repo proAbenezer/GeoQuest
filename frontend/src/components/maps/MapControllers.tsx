@@ -118,15 +118,35 @@ export default function MapControllers({
       geolocateControl.on("trackuserlocationend", () => onStatusChangeRef.current("idle"))
       geolocateControl.on("error", (e: GeolocationPositionError) => onErrorRef.current(e))
 
+      // New-visitor experience: start tracking the user's live location
+      // immediately on load instead of waiting for them to click the locate
+      // button. Without this, a first-time visitor lands and nothing ever
+      // unlocks (the GPS feed drives auto-unlock). The control's own watcher
+      // keeps feeding fresh coordinates as the user moves, so places unlock as
+      // they travel. If geolocation is denied/unavailable this just fires the
+      // control's "error" event into the existing status/error path.
+      //
+      // The control isn't ready to trigger() right after addControl: it runs an
+      // async geolocation-support probe and only fires "ready" (setting _setup)
+      // once that resolves. Calling trigger() before then logs "Geolocate control
+      // triggered before added to a map" and does nothing — so wait for "ready"
+      // (the pattern mapbox documents) before starting the watch.
+      geolocateControl.once("ready", () => {
+        try {
+          geolocateControl.trigger()
+        } catch (err) {
+          console.warn("Auto geolocation trigger failed:", err)
+        }
+      })
+
       map.addControl(geolocateControl, "top-right")
       geolocateControlRef.current = geolocateControl
 
       map.addControl(new mapboxgl.ScaleControl({ unit: "metric" }), "bottom-left")
 
-      // Replace the native 2-state button toggle with the 3-stage cycle. The
-      // control starts OFF — the location dot/circle only appears on the first
-      // click (this also means the app's GPS feed starts on first click, not
-      // on page load).
+      // Replace the native 2-state button toggle with the 3-stage cycle. Once
+      // active, clicking cycles: live → dot → off. (The control no longer waits
+      // for a click to START — see the auto-trigger above.)
       attachGeolocateCycle(geolocateControl)
     }
 

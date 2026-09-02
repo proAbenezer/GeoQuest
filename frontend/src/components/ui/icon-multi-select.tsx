@@ -8,20 +8,23 @@ interface IconMultiSelectProps {
   onChange: (icons: string[]) => void
 }
 
-// A pin or category can carry at most two icons — enough for a small stack,
-// but no more (matches "don't allow more than two").
-const MAX_ICONS = 2
+// A pin or category carries at most ONE icon (the design uses a single icon per
+// entity). Picking a new icon while one is already selected replaces it.
+const MAX_ICONS = 1
 
 /**
- * Icon picker for categories and pins. Up to MAX_ICONS icons can be chosen; the
- * grid below toggles them on/off, and picks past the cap are ignored.
+ * Icon picker for categories and pins. At most MAX_ICONS icons can be chosen;
+ * once the cap is reached, picking another icon replaces the current selection.
  */
 export function IconMultiSelect({ value, onChange }: IconMultiSelectProps) {
   const atCap = value.length >= MAX_ICONS
   const toggle = (id: string) => {
     if (value.includes(id)) {
       onChange(value.filter((v) => v !== id))
-    } else if (!atCap) {
+    } else if (value.length >= MAX_ICONS) {
+      // Single-icon mode: swap in the newly picked icon.
+      onChange([id])
+    } else {
       onChange([...value, id])
     }
   }
@@ -61,14 +64,12 @@ export function IconMultiSelect({ value, onChange }: IconMultiSelectProps) {
               key={id}
               type="button"
               onClick={() => toggle(id)}
-              title={active ? id : atCap ? `Remove an icon to pick ${id}` : id}
+              title={id}
               aria-pressed={active}
               className={`flex items-center justify-center rounded-lg p-1.5 transition-colors ${
                 active
                   ? "text-primary"
-                  : atCap
-                    ? "cursor-not-allowed text-muted-foreground/30"
-                    : "text-muted-foreground hover:bg-muted"
+                  : "text-muted-foreground hover:bg-muted"
               }`}
             >
               <Icon className="h-4 w-4" />
@@ -78,7 +79,7 @@ export function IconMultiSelect({ value, onChange }: IconMultiSelectProps) {
       </div>
       {atCap && (
         <p className="text-[11px] text-muted-foreground/70">
-          Maximum of {MAX_ICONS} icons — remove one to pick another.
+          One icon only — pick another to replace it.
         </p>
       )}
     </div>

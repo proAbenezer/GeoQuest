@@ -159,7 +159,7 @@ const PinFormFields = ({
       </div>
 
       <div className="space-y-2">
-        <Label>Icons (optional)</Label>
+        <Label>Icon (optional)</Label>
         <IconMultiSelect value={icons} onChange={setIcons} />
       </div>
 

@@ -2,27 +2,35 @@
 //
 // Feeds the sidebar's exploration bar. Reads the persisted per-node roll-up
 // from the server (GET /places/exploration — the client never recomputes the
-// hierarchy), then picks which single region to display based on the current
-// viewport:
+// hierarchy), then picks which region to display:
 //
-//   - No viewport yet (map not loaded / not on the map route): the country's
-//     aggregate ("Ethiopia Explored").
-//   - The viewport center's ancestor chain (root → deepest containing place):
-//     pick the DEEPEST ancestor whose footprint is at least ~half on screen
-//     (a visible-fraction rule, not a strict "fully contained" test). So
-//     zooming out climbs toward the whole country and zooming in descends to
-//     the smallest region that's mostly visible — a region at ~90% on screen
-//     with neighbor edges peeking in (e.g. Addis Ababa) is still selected.
-//   - Otherwise (deep zoom into part of a region, nothing ≥ half visible): fall
-//     back to leaf-level detail SCOPED to the deepest center-ancestor's
-//     subtree, so the aggregate never mixes in neighboring regions.
+//   - Live GPS fix (geolocate on): the TOP-LEVEL region whose boundary contains
+//     the fix — the place you are physically in ("Addis Ababa Explored" when in
+//     Addis), regardless of how the map is zoomed or panned. Deterministic:
+//     zooming out over Addis + neighbouring regions can no longer slip the label
+//     onto the neighbouring Oromia zone that merely contains the map's centre.
+//   - No GPS yet: follow the map viewport (what's on screen):
+//       - No viewport (map not loaded / not on the map route): the country's
+//         aggregate ("Ethiopia Explored").
+//       - The viewport centre's ancestor chain (root → deepest containing
+//         place): pick the DEEPEST ancestor whose footprint is at least ~half
+//         on screen (a visible-fraction rule, not a strict "fully contained"
+//         test). So zooming out climbs toward the whole country and zooming in
+//         descends to the smallest region that's mostly visible — a region at
+//         ~90% on screen with neighbour edges peeking in (e.g. Addis Ababa) is
+//         still selected.
+//       - Otherwise (deep zoom into part of a region, nothing ≥ half visible):
+//         fall back to leaf-level detail SCOPED to the deepest centre-ancestor's
+//         subtree, so the aggregate never mixes in neighbouring regions.
 //
 // Granularity is generic — driven entirely by the self-referencing places tree,
-// never a hardcoded admin depth. The "footprint" of a division is approximated
-// by the bbox of its boundary geometry, and "contains the center" is a bbox
-// point-in-box test; both are sufficient-not-necessary approximations (flagged
-// deliberately — exact polygon tests per pan/zoom would be far heavier).
+// never a hardcoded admin depth. The viewport branch's "footprint" of a
+// division is approximated by the bbox of its boundary geometry (flagged
+// deliberately — exact polygon tests per pan/zoom would be far heavier). The
+// GPS branch does one exact point-in-polygon test per fix over the handful of
+// top-level regions instead, so attribution to "where you are" is precise.
 import { useMemo, useState, useEffect, useRef } from "react"
+import * as turf from "@turf/turf"
 import { usePins } from "@/context/usePins"
 import { useCountryPlaces } from "@/hooks/useCountryPlaces"
 import { fetchExplorationPlaces } from "@/lib/api"
@@ -117,11 +125,15 @@ type CountryIndex = {
   children: Map<string, string[]>
   nameById: Map<string, string>
   bboxCache: Map<string, BBox | null>
+  // Parsed boundary geometry of the country's TOP-LEVEL regions (children of
+  // the root). The GPS branch tests the live fix against these exactly (a
+  // handful of polygons per fix — cheap) to say which region you are in.
+  topLevel: { id: string; geom: any }[]
   entryFor: (id: string) => ExplorationEntry
 }
 
 export function useExploreProgress(): ExploreProgress {
-  const { countryIso2, mapBounds, viewportCenter, unlockCount } = usePins()
+  const { countryIso2, mapBounds, viewportCenter, gpsLocation, unlockCount } = usePins()
   const { places, status: countryStatus } = useCountryPlaces(countryIso2)
 
   const [entries, setEntries] = useState<ExplorationEntry[]>([])
@@ -208,19 +220,60 @@ export function useExploreProgress(): ExploreProgress {
       }
     }
 
+    // Parsed geometry of each top-level region (children of the root). Only
+    // these ever need exact polygons — the GPS branch tests the live fix
+    // against them for containment, where bbox point-in-box isn't enough.
+    const placeById = new Map(places.map((p) => [p.id, p]))
+    const topLevel: { id: string; geom: any }[] = []
+    for (const id of children.get(rootId) ?? []) {
+      const p = placeById.get(id)
+      if (!p) continue
+      try {
+        topLevel.push({ id, geom: JSON.parse(p.boundary) })
+      } catch {
+        // skip — a top region without a parseable boundary just never wins GPS hits
+      }
+    }
+
     return {
       rootId,
       countryTitle: `${nameById.get(rootId)} Explored`,
       children,
       nameById,
       bboxCache,
+      topLevel,
       entryFor,
     }
   }, [places, entries])
 
   return useMemo<ExploreProgress>(() => {
     if (!countryIndex || !countryIso2) return null
-    const { rootId, countryTitle, children, nameById, bboxCache, entryFor } = countryIndex
+    const { rootId, countryTitle, children, nameById, bboxCache, topLevel, entryFor } =
+      countryIndex
+
+    // Live GPS fix present → the bar is anchored to the region you are
+    // PHYSICALLY in, not whatever is under the map's centre pixel. Test the fix
+    // against each top-level region's exact polygon (bbox point-in-box is not
+    // reliable at borders); if it falls in none — fix outside the country, or
+    // still inside a hole — show the country aggregate.
+    if (gpsLocation) {
+      const pt = turf.point([gpsLocation.longitude, gpsLocation.latitude])
+      const region = topLevel.find((t) => {
+        try {
+          return turf.booleanPointInPolygon(pt, t.geom)
+        } catch {
+          return false
+        }
+      })
+      if (region) {
+        prevPick.current = null // region picks no longer track the viewport
+        return {
+          title: `${nameById.get(region.id) ?? "This area"} Explored`,
+          percent: entryFor(region.id).percent,
+        }
+      }
+      return { title: countryTitle, percent: entryFor(rootId).percent }
+    }
 
     // No viewport yet → whole-country aggregate.
     if (!mapBounds || !viewportCenter) {
@@ -308,5 +361,5 @@ export function useExploreProgress(): ExploreProgress {
       title: `${regionName} · Visible Area`,
       percent: Math.round((exploredCount / visibleLeaves.length) * 100),
     }
-  }, [countryIndex, mapBounds, viewportCenter, countryIso2])
+  }, [countryIndex, mapBounds, viewportCenter, countryIso2, gpsLocation])
 }

@@ -24,6 +24,12 @@ import CommentSection from "@/components/comments/CommentSection"
 
 type Mode = "pin" | "location" | "route"
 
+// A pin's real location name lives in `pin.name`; `customName` is the label the
+// user gave it ("my favorite spot"). The comment section should show the user's
+// own label and only fall back to the location name when none was set.
+const pinLabel = (pin: Pin | null | undefined): string =>
+  pin ? pin.customName || pin.name : ""
+
 const AddCommentPanel = () => {
   const { secondaryPanel, setSecondaryPanel, pins } = usePins()
   const { user } = useAuth()
@@ -82,7 +88,7 @@ const AddCommentPanel = () => {
         longitude: search.location.longitude,
       }
     }
-    if (mode === "route" && startPin && endPin) {
+    if (mode === "route" && startPin && endPin && startPin.id !== endPin.id) {
       return {
         type: "route" as const,
         routeStartPinId: startPin.id,
@@ -97,16 +103,18 @@ const AddCommentPanel = () => {
   // ---- Pin search ----
   const filteredPins = pinQuery.trim()
     ? pins.filter((p) =>
-        p.name.toLowerCase().includes(pinQuery.toLowerCase())
+        `${p.customName || ""} ${p.name}`
+          .toLowerCase()
+          .includes(pinQuery.toLowerCase())
       )
     : pins
 
   const targetLabel = target
     ? target.type === "pin"
-      ? selectedPin!.name
+      ? pinLabel(selectedPin)
       : target.type === "location"
         ? search.location!.placeName
-        : `Route: ${startPin!.name} → ${endPin!.name}`
+        : `Route: ${pinLabel(startPin)} → ${pinLabel(endPin)}`
     : null
 
   const modeButton = (m: Mode, label: string) => (
@@ -199,7 +207,7 @@ const AddCommentPanel = () => {
                     }`}
                   >
                     <MapPin className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-                    <span className="flex-1 truncate text-left">{pin.name}</span>
+                    <span className="flex-1 truncate text-left">{pinLabel(pin)}</span>
                     {selectedPin?.id === pin.id && <CornerDownRight className="h-3.5 w-3.5" />}
                   </button>
                 ))}
@@ -246,9 +254,9 @@ const AddCommentPanel = () => {
               <RouteIcon className="h-3.5 w-3.5" />
               <h3 className="text-xs font-semibold uppercase tracking-wider">Route (Start → End)</h3>
             </div>
-            {pins.length === 0 ? (
+            {pins.length < 2 ? (
               <p className="text-sm text-muted-foreground px-3 py-2 text-center">
-                You need at least two pins to comment on a route.
+                You need at least two pins to comment on a route. Add another pin first.
               </p>
             ) : (
               <>
@@ -324,7 +332,7 @@ function PinSelect({
                 : "border-border/60 text-muted-foreground hover:bg-muted"
             }`}
           >
-            {pin.name}
+            {pinLabel(pin)}
           </button>
         ))}
       </div>

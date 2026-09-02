@@ -47,6 +47,12 @@ type SelectedRoute = { routeStartPinId: string; routeEndPinId: string } | null
 // widget's "nearest location" query.
 type ViewportCenter = { latitude: number; longitude: number } | null
 
+// The live GPS fix when the geolocate control has one (same source that unlocks
+// leaves). The exploration bar anchors to it — the region you are physically
+// in — instead of the arbitrary viewport centre; null means GPS is off or
+// unavailable and the bar falls back to the viewport.
+type GpsLocation = { latitude: number; longitude: number } | null
+
 type PinVisibility = "all" | "pinned" | "unpinned"
 
 // ---- TemporaryPoi now includes categoryId (real app ID) ----
@@ -111,6 +117,9 @@ interface PinsContextValue {
   // Phase 2: viewport center for the top-comment widget
   viewportCenter: ViewportCenter
   setViewportCenter: (center: ViewportCenter) => void
+  // Live GPS fix for the exploration bar (see GpsLocation above).
+  gpsLocation: GpsLocation
+  setGpsLocation: (location: GpsLocation) => void
 
   // Exploration bar: the current country's ISO code, pushed from MapView's
   // single location watcher (Sidebar must not start its own reverse-geocode),
@@ -179,6 +188,7 @@ export function PinsProvider({ children }: { children: ReactNode }) {
   const [mapBounds, setMapBounds] = useState<[number, number, number, number] | null>(null)
   const [pinVisibility, setPinVisibility] = useState<PinVisibility>("all")
   const [viewportCenter, setViewportCenter] = useState<ViewportCenter>(null)
+  const [gpsLocation, setGpsLocation] = useState<GpsLocation>(null)
 
   // Exploration bar coordination — see the interface docs above.
   const [countryIso2, setCountryIso2] = useState<string | null>(null)
@@ -367,6 +377,8 @@ export function PinsProvider({ children }: { children: ReactNode }) {
     setPinVisibility,
     viewportCenter,
     setViewportCenter,
+    gpsLocation,
+    setGpsLocation,
     // Exploration bar
     countryIso2,
     setCountryIso2,

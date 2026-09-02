@@ -120,7 +120,7 @@ const CategoryForm = ({
         />
       </div>
       <div className="space-y-2">
-        <Label>Icons</Label>
+        <Label>Icon</Label>
         <IconMultiSelect value={icons} onChange={setIcons} />
       </div>
       <Button onClick={onSubmit} className="w-full">

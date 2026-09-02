@@ -46,6 +46,7 @@ const Sidebar = () => {
     pins,
     setFlyToTarget,
     setHighlightedPinId,
+    highlightedPinId,
     setPrefillLocation,
   } = usePins()
   const { categories, setIsManagingCategories } = useCategories()
@@ -55,7 +56,10 @@ const Sidebar = () => {
   const collapsed = !isMobile && state === "collapsed"
   const exploreProgress = useExploreProgress()
 
-  const closeMobileSidebar = () => {
+  // After picking a top-level destination that navigates AWAY (Dashboard), close
+  // the mobile nav sheet. Opening secondary panels (pin detail, add pin, …) does
+  // NOT close it — the main sidebar and those panels now coexist independently.
+  const closeMobileNav = () => {
     if (isMobile) setOpenMobile(false)
   }
 
@@ -97,13 +101,10 @@ const Sidebar = () => {
   const displayedPins = getDisplayedPins()
 
   const handlePinClick = (pin: any) => {
-    closeMobileSidebar() // opens pin detail panel, so close sidebar
-    setSecondaryPanel(null)
+    // Opens the pin-detail panel — the main sidebar stays open (decoupled).
     setFlyToTarget({ latitude: pin.latitude, longitude: pin.longitude })
     setHighlightedPinId(pin.id)
-    setTimeout(() => {
-      setSecondaryPanel({ type: "pinDetail", pin })
-    }, 50)
+    setSecondaryPanel({ type: "pinDetail", pin })
   }
 
   return (
@@ -130,7 +131,8 @@ const Sidebar = () => {
         <div className="rounded-xl border border-border/40 bg-card/40 p-3 space-y-2 group-data-[collapsible=icon]:p-1 group-data-[collapsible=icon]:space-y-0 group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:shadow-none group-data-[collapsible=icon]:hover:border-transparent group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center hover:border-border/60 transition-colors">
           <button
             onClick={() => {
-              closeMobileSidebar()
+              closeMobileNav()
+              // Navigating to a different top-level view dismisses any open panel.
               setSecondaryPanel(null)
               navigate(isOnDashboard ? "/" : "/stats")
             }}
@@ -222,15 +224,8 @@ const Sidebar = () => {
               {listPanel?.type === "saved" && <span className="h-1.5 w-1.5 rounded-full bg-primary group-data-[collapsible=icon]:hidden" />}
             </button>
 
-            {/* ✅ This one OPENS a secondary panel – close sidebar */}
             <button
-              onClick={() => {
-                closeMobileSidebar()
-                setSecondaryPanel(null)
-                setTimeout(() => {
-                  setSecondaryPanel({ type: "savedPlaces" })
-                }, 50)
-              }}
+              onClick={() => setSecondaryPanel({ type: "savedPlaces" })}
               className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-foreground transition-all hover:bg-muted/40 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:hover:bg-transparent"
             >
               <Plus className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
@@ -278,17 +273,13 @@ const Sidebar = () => {
             <h3 className="text-[11px] font-semibold uppercase tracking-wider group-data-[collapsible=icon]:hidden">Actions</h3>
           </div>
           <div className="space-y-0.5 group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center">
-            {/* ✅ Add Pin – closes sidebar */}
+            {/* ✅ Add Pin – opens the panel, keeps the main sidebar open */}
             <button
               onClick={() => {
-                closeMobileSidebar()
                 if (secondaryPanel?.type === "addPin") {
                   setSecondaryPanel(null)
                 } else {
-                  setSecondaryPanel(null)
-                  setTimeout(() => {
-                    setSecondaryPanel({ type: "addPin" })
-                  }, 50)
+                  setSecondaryPanel({ type: "addPin" })
                 }
               }}
               className={`
@@ -307,15 +298,9 @@ const Sidebar = () => {
               {secondaryPanel?.type === "addPin" && <span className="h-1.5 w-1.5 rounded-full bg-primary group-data-[collapsible=icon]:hidden" />}
             </button>
 
-            {/* ✅ Add Comment – closes sidebar */}
+            {/* ✅ Add Comment – opens the panel, keeps the main sidebar open */}
             <button
-              onClick={() => {
-                closeMobileSidebar()
-                setSecondaryPanel(null)
-                setTimeout(() => {
-                  setSecondaryPanel({ type: "addComment" })
-                }, 50)
-              }}
+              onClick={() => setSecondaryPanel({ type: "addComment" })}
               className={`
                 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all
                 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0
@@ -332,13 +317,7 @@ const Sidebar = () => {
 
             {/* ✅ Add Category – opens the category manager (add form on top) */}
             <button
-              onClick={() => {
-                closeMobileSidebar()
-                setSecondaryPanel(null)
-                setTimeout(() => {
-                  setIsManagingCategories(true)
-                }, 50)
-              }}
+              onClick={() => setIsManagingCategories(true)}
               className={`
                 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all
                 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0
@@ -358,10 +337,9 @@ const Sidebar = () => {
             <h3 className="text-[11px] font-semibold uppercase tracking-wider group-data-[collapsible=icon]:hidden">Settings</h3>
           </div>
           <div className="space-y-0.5 group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center">
-            {/* ✅ Settings – closes sidebar */}
+            {/* ✅ Settings – opens the panel, keeps the main sidebar open */}
             <button
               onClick={() => {
-                closeMobileSidebar()
                 if (secondaryPanel?.type === "settings") {
                   setSecondaryPanel(null)
                 } else {
@@ -417,20 +395,16 @@ const Sidebar = () => {
                     >
                       <button
                         onClick={() => {
-                          // clicking a recent item opens a panel – close sidebar
-                          closeMobileSidebar()
+                          // Opens the panel — the main sidebar stays open.
                           if (item.isPin) {
                             const pin = pins.find((p) => p.id === item.pinId)
                             if (pin) {
-                              setSecondaryPanel(null)
                               setFlyToTarget({
                                 latitude: item.latitude || pin.latitude,
                                 longitude: item.longitude || pin.longitude,
                               })
-                              setHighlightedPinId(item.id)
-                              setTimeout(() => {
-                                setSecondaryPanel({ type: "pinDetail", pin })
-                              }, 50)
+                              setHighlightedPinId(pin.id)
+                              setSecondaryPanel({ type: "pinDetail", pin })
                             }
                           } else {
                             setSecondaryPanel({
@@ -454,18 +428,13 @@ const Sidebar = () => {
                       {!item.isPin && (
                         <button
                           onClick={() => {
-                            // "Add pin" from recent – closes sidebar
-                            closeMobileSidebar()
-                            setSecondaryPanel(null)
-                            setTimeout(() => {
-                              setPrefillLocation({
-                                placeName: item.name,
-                                address: item.address || item.name,
-                                latitude: item.latitude || 0,
-                                longitude: item.longitude || 0,
-                              })
-                              setSecondaryPanel({ type: "addPin" })
-                            }, 50)
+                            setPrefillLocation({
+                              placeName: item.name,
+                              address: item.address || item.name,
+                              latitude: item.latitude || 0,
+                              longitude: item.longitude || 0,
+                            })
+                            setSecondaryPanel({ type: "addPin" })
                           }}
                           className="ml-2 rounded-lg p-1 text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors group-data-[collapsible=icon]:hidden"
                           title="Add pin at this location"
@@ -485,19 +454,23 @@ const Sidebar = () => {
                   displayedPins.map((pin) => (
                     <button
                       key={pin.id}
-                      onClick={() => handlePinClick(pin)} // handlePinClick closes sidebar
+                      onClick={() => handlePinClick(pin)}
                       className={`
                         flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all
-                        text-foreground hover:bg-muted/40 group-data-[collapsible=icon]:hover:bg-transparent
                         group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center
                         group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0
+                        ${
+                          highlightedPinId === pin.id
+                            ? "bg-primary/15 text-primary font-medium group-data-[collapsible=icon]:bg-primary/15"
+                            : "text-foreground hover:bg-primary/5 hover:text-primary group-data-[collapsible=icon]:hover:bg-primary/10"
+                        }
                       `}
                     >
                       <IconStack
                         icons={getIconList(pin.icons, getCategoryIcon(pin.categoryId))}
                         size="h-4 w-4"
                         max={collapsed ? 1 : 2}
-                        className="flex-shrink-0 text-muted-foreground"
+                        className={`flex-shrink-0 ${highlightedPinId === pin.id ? "text-primary" : "text-muted-foreground"}`}
                       />
                       <span className="flex-1 text-left truncate group-data-[collapsible=icon]:hidden">{pin.name}</span>
                     </button>
@@ -518,11 +491,22 @@ const Sidebar = () => {
         </div>
         <div className="hidden group-data-[collapsible=icon]:flex items-center justify-center">
           <div className="relative flex h-8 w-8 items-center justify-center">
-            <svg className="h-8 w-8 -rotate-90 transform">
-              <circle cx="20" cy="20" r="16" stroke="currentColor" strokeWidth="3" fill="none" className="text-muted/20" />
-              <circle cx="20" cy="20" r="16" stroke="currentColor" strokeWidth="3" fill="none" strokeDasharray={100} strokeDashoffset={100 - (exploreProgress?.percent ?? 0)} className="text-primary transition-all duration-500" strokeLinecap="round" />
+            <svg className="h-8 w-8 -rotate-90 transform" viewBox="0 0 32 32">
+              <circle cx="16" cy="16" r="14" stroke="currentColor" strokeWidth="3" fill="none" className="text-muted/20" />
+              <circle
+                cx="16"
+                cy="16"
+                r="14"
+                stroke="currentColor"
+                strokeWidth="3"
+                fill="none"
+                strokeDasharray={2 * Math.PI * 14}
+                strokeDashoffset={2 * Math.PI * 14 * (1 - (exploreProgress?.percent ?? 0) / 100)}
+                className="text-primary transition-all duration-500"
+                strokeLinecap="round"
+              />
             </svg>
-            <span className="absolute inset-0 flex items-center justify-center text-[10px] font-semibold leading-none text-foreground tabular-nums">
+            <span className="absolute inset-0 flex items-center justify-center whitespace-nowrap text-[9px] font-semibold leading-none text-foreground tabular-nums">
               {exploreProgress ? `${exploreProgress.percent}%` : "–"}
             </span>
           </div>

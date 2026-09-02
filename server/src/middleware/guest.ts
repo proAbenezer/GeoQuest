@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express"
 import jwt from "jsonwebtoken"
+import { eq } from "drizzle-orm"
 import { db } from "../db/index.js"
 import { guests } from "../db/schema.js"
 
@@ -23,8 +24,19 @@ export async function ensureGuestSession(req: Request, res: Response, next: Next
   if (token) {
     try {
       const payload = jwt.verify(token, GUEST_JWT_SECRET) as { guestId: string }
-      req.guestId = payload.guestId
-      return next()
+      // Verify the guest still exists before trusting the JWT. A token whose
+      // guest row was deleted (e.g. a DB wipe to test from scratch) is stale —
+      // reuse would make FK writes fail silently. Fall through and mint a fresh
+      // identity instead, mirroring the invalid/expired path below.
+      const [existing] = await db
+        .select({ id: guests.id })
+        .from(guests)
+        .where(eq(guests.id, payload.guestId))
+        .limit(1)
+      if (existing) {
+        req.guestId = existing.id
+        return next()
+      }
     } catch {
       // invalid/expired — fall through and issue a fresh guest identity
     }

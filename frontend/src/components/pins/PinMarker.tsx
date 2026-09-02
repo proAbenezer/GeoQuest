@@ -14,7 +14,10 @@ interface PinMarkerProps {
   commentCount?: number
 }
 
-export const MIN_ZOOM_TO_SHOW_PINS = 12
+// Minimum zoom at which pins (and the comment-route overlay, which mirrors this
+// constant) are shown. Lowered from 12 → 10 so pins stay visible much further
+// out when zooming out — about 4× the map area, ~2 extra zoom-out steps.
+export const MIN_ZOOM_TO_SHOW_PINS = 10
 const MIN_ZOOM_TO_SHOW_IMAGES = 13
 
 const PinMarker = ({ pin, zoom, commentCount }: PinMarkerProps) => {

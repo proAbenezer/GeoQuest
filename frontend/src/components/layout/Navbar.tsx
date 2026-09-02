@@ -57,7 +57,7 @@ interface NavbarProps {
 const Navbar = ({ visitedIso2 = new Set() }: NavbarProps) => {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
-  const { toggleSidebar, openMobile } = useSidebar() // ✅ for mobile hamburger
+  const { toggleSidebar } = useSidebar() // ✅ for mobile hamburger
   const {
     setFlyToTarget,
     activeCategoryIds,
@@ -70,8 +70,6 @@ const Navbar = ({ visitedIso2 = new Set() }: NavbarProps) => {
     setPinVisibility,
     filterPanelOpen,
     openFilterPanel,
-    setSecondaryPanel,
-    openCommentView,
   } = usePins()
   const { categories, loading: categoriesLoading } = useCategories()
   const { openPreview } = usePanelManager()
@@ -253,16 +251,7 @@ const Navbar = ({ visitedIso2 = new Set() }: NavbarProps) => {
         variant="ghost"
         size="icon"
         className="h-9 w-9 rounded-lg md:hidden shrink-0"
-        onClick={() => {
-          // Opening the mobile nav is opening a sidebar — close the others so
-          // only one sidebar is open at a time.
-          if (!openMobile) {
-            setSecondaryPanel(null)
-            openFilterPanel(false)
-            openCommentView(false)
-          }
-          toggleSidebar()
-        }}
+        onClick={() => toggleSidebar()}
         aria-label="Toggle menu"
       >
         <Menu className="h-4 w-4" />
