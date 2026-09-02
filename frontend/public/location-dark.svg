@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Dark-theme variant of the navbar MapPin logo (brighter emerald). -->
+  <g fill="none" stroke="#2fd491" stroke-width="1.4"
+     stroke-linecap="round" stroke-linejoin="round"
+     transform="translate(7.5 5) scale(2.05)">
+    <path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0Z"/>
+    <circle cx="12" cy="10" r="3"/>
+  </g>
+</svg>

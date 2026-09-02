@@ -13,18 +13,35 @@ import statsRouter from "./routes/stats.ts"
 
 const app = express()
 
-// Origins that may call this API. Always includes the Vercel frontend and the
-// local dev server; CLIENT_ORIGIN (if set on Render) is honored too, so a
-// dashboard value can still add/remove an origin without a redeploy.
-const allowedOrigins = [
-  "http://localhost:5173",
-  "https://geo-quest-jade.vercel.app",
-  ...(process.env.CLIENT_ORIGIN ? [process.env.CLIENT_ORIGIN] : []),
-]
+const extraOrigins = (process.env.CLIENT_ORIGIN ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean)
 
+// Origins that may call this API. The frontend is hosted on Vercel, which gives
+// the production site and every branch/preview deployment its own *.vercel.app
+// subdomain — so allow the whole suffix rather than pinning one URL (previews
+// get random subdomains and would otherwise be CORS-blocked, as seen with
+// geo-quest-jnl9wyvqi-proabenezers-projects.vercel.app). The local dev server
+// is included, and CLIENT_ORIGIN (comma-separated, set on Render) adds extra
+// origins without a redeploy.
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin(origin, callback) {
+      // No Origin header = curl / server-to-server calls — always allowed.
+      if (!origin) return callback(null, true)
+      try {
+        const { protocol, host } = new URL(origin)
+        const allowed =
+          (protocol === "https:" || protocol === "http:") &&
+          (host === "localhost:5173" ||
+            host.endsWith(".vercel.app") ||
+            extraOrigins.some((o) => o === origin || o === `${protocol}//${host}`))
+        callback(null, allowed)
+      } catch {
+        callback(null, false)
+      }
+    },
     credentials: true,
   })
 )

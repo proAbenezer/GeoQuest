@@ -8,6 +8,11 @@ import { countryFetchStatus } from "./db/schema.js"
 const port = process.env.PORT ? Number(process.env.PORT) : 4000
 
 async function start() {
+  // NODE_ENV gates cookie behavior (SameSite/Secure) — log it so a deploy log
+  // makes it obvious when Render hasn't set production (cookies would fall back
+  // to the lax/local-dev flavor and break cross-site sessions).
+  console.log(`[env] NODE_ENV=${process.env.NODE_ENV ?? "(unset)"}`)
+
   if (!process.env.DATABASE_URL) {
     console.error(
       "DATABASE_URL is not set. Add it under Render → your web service → Environment " +

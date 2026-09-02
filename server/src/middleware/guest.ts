@@ -7,10 +7,16 @@ import { guests } from "../db/schema.js"
 const GUEST_JWT_SECRET = process.env.GUEST_JWT_SECRET || process.env.JWT_SECRET!
 const GUEST_COOKIE_NAME = "guest_id"
 
+// Production serves the frontend from a different site (Vercel → Render), so the
+// guest cookie must be SameSite=None; Secure to ride along on cross-site fetches.
+// A Lax cookie is withheld by the browser on cross-site XHR, which would mint a
+// new guest on every request and make unlock progress vanish. Local dev is
+// same-site (localhost:5173 → localhost:4000), where Lax + http is correct.
+const IS_PROD = process.env.NODE_ENV === "production"
 const cookieOptions = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: "lax" as const,
+  secure: IS_PROD,
+  sameSite: (IS_PROD ? "none" : "lax") as "none" | "lax",
   maxAge: 365 * 24 * 60 * 60 * 1000, // 1 year — guest unlock progress should persist long-term
 }
 
