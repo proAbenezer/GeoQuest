@@ -5,6 +5,34 @@ import * as schema from "./schema.js"
 
 const connectionString = process.env.DATABASE_URL
 
-const client = postgres(connectionString)
+if (!connectionString) {
+  throw new Error(
+    "DATABASE_URL is not set. Configure it under Render → Web Service → Environment " +
+      "(use your Postgres service's Internal Database URL)."
+  )
+}
+
+// Log the host we're really connecting to (credentials stripped) so a deploy log
+// makes a misconfigured DATABASE_URL obvious — e.g. it should show a
+// *.render.com host, never "localhost".
+try {
+  const { protocol, host, port, pathname } = new URL(connectionString)
+  console.log(`[db] connecting to ${protocol}//${host}:${port}${pathname}`)
+} catch {
+  console.warn("[db] DATABASE_URL is not a valid URL")
+}
+
+// Render's External Database URL appends ?sslmode=require, which postgres.js does
+// not read on its own — translate it into the ssl option. Local dev URLs and
+// Render Internal URLs (no sslmode) connect without SSL and are unaffected.
+let ssl: false | { rejectUnauthorized: false } = false
+try {
+  const mode = new URL(connectionString).searchParams.get("sslmode")
+  if (mode && mode !== "disable") ssl = { rejectUnauthorized: false }
+} catch {
+  // invalid URL — let postgres.js report its own error below
+}
+
+const client = postgres(connectionString, ssl ? { ssl } : {})
 
 export const db = drizzle(client, { schema })
