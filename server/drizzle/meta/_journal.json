@@ -85,6 +85,20 @@
       "when": 1788254192892,
       "tag": "0011_bright_red_ghost",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788360631507,
+      "tag": "0012_clammy_george_stacy",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1788365480233,
+      "tag": "0013_new_synch",
+      "breakpoints": true
     }
   ]
 }

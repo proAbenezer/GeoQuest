@@ -4,6 +4,7 @@ import StatsPage from "@/pages/StatsPage"
 import ProfilePage from "@/pages/ProfilePage"
 import LoginPage from "@/pages/LoginPage"
 import Signup from "@/pages/signup"
+import MessagesPage from "@/pages/MessagesPage"
 import AppLayout from "@/components/layout/AppLayout"
 import ProtectedRoute from "@/components/ProtectedRoute"
 import { AuthProvider } from "@/context/AuthContext"
@@ -21,6 +22,8 @@ const App = () => {
               it carries its own "Back to map" link. */}
           <Route element={<ProtectedRoute />}>
             <Route path="/stats" element={<StatsPage />} />
+            <Route path="/messages" element={<MessagesPage />} />
+            <Route path="/messages/:conversationId" element={<MessagesPage />} />
           </Route>
           <Route element={<AppLayout />}>
             <Route path="/" element={<MapPage />} />

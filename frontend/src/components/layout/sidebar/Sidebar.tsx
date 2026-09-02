@@ -22,6 +22,7 @@ import {
   Star,
   Tag,
   X,
+  MessageCircle,
   MessageSquarePlus,
   LayoutDashboard,
 } from "lucide-react"
@@ -30,6 +31,7 @@ import { useCategories } from "@/context/useCategories"
 import { getCategoryIcon, getIconList } from "@/lib/categoryDisplay"
 import { IconStack } from "@/components/ui/icon-stack"
 import { useRecentlyVisited } from "@/hooks/useRecentlyVisited"
+import { useConversationUnread } from "@/hooks/useConversations"
 import { useExploreProgress } from "@/hooks/useExploreProgress"
 import ExploreProgress, { formatExplorePercent } from "./ExploreProgress"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -38,6 +40,7 @@ const Sidebar = () => {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const isOnDashboard = pathname === "/stats"
+  const isOnMessages = pathname === "/messages" || pathname.startsWith("/messages/")
   const {
     listPanel,
     setListPanel,
@@ -51,6 +54,7 @@ const Sidebar = () => {
   } = usePins()
   const { categories, setIsManagingCategories } = useCategories()
   const { items: recentlyVisitedItems, loading: recentlyVisitedLoading } = useRecentlyVisited()
+  const unreadMessages = useConversationUnread()
   const { state, setOpenMobile } = useSidebar()
   const isMobile = useIsMobile()
   const collapsed = !isMobile && state === "collapsed"
@@ -148,6 +152,40 @@ const Sidebar = () => {
             <LayoutDashboard className={`h-4 w-4 flex-shrink-0 ${isOnDashboard ? "text-primary" : "text-muted-foreground"}`} />
             <span className="flex-1 text-left group-data-[collapsible=icon]:hidden">Dashboard</span>
             {isOnDashboard && <span className="h-1.5 w-1.5 rounded-full bg-primary group-data-[collapsible=icon]:hidden" />}
+          </button>
+        </div>
+
+        {/* Messages – top-level chat (navigates away to /messages, like Dashboard) */}
+        <div className="rounded-xl border border-border/40 bg-card/40 p-3 space-y-2 group-data-[collapsible=icon]:p-1 group-data-[collapsible=icon]:space-y-0 group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:shadow-none group-data-[collapsible=icon]:hover:border-transparent group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center hover:border-border/60 transition-colors">
+          <button
+            onClick={() => {
+              closeMobileNav()
+              // Navigating to a different top-level view dismisses any open panel.
+              setSecondaryPanel(null)
+              navigate("/messages")
+            }}
+            className={`
+              flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all
+              group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0
+              ${isOnMessages
+                ? "bg-primary/10 text-primary font-medium group-data-[collapsible=icon]:bg-transparent"
+                : "text-foreground hover:bg-muted/40 group-data-[collapsible=icon]:hover:bg-transparent"
+              }
+            `}
+          >
+            <span className="relative flex-shrink-0">
+              <MessageCircle className={`h-4 w-4 ${isOnMessages ? "text-primary" : "text-muted-foreground"}`} />
+              {unreadMessages > 0 && (
+                <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-primary ring-2 ring-card hidden group-data-[collapsible=icon]:block" />
+              )}
+            </span>
+            <span className="flex-1 text-left group-data-[collapsible=icon]:hidden">Messages</span>
+            {unreadMessages > 0 && (
+              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold tabular-nums text-primary-foreground group-data-[collapsible=icon]:hidden">
+                {unreadMessages}
+              </span>
+            )}
+            {isOnMessages && <span className="h-1.5 w-1.5 rounded-full bg-primary group-data-[collapsible=icon]:hidden" />}
           </button>
         </div>
 

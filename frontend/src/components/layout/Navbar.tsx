@@ -24,6 +24,7 @@ import { useState, useRef, useEffect, useCallback } from "react"
 import { usePins } from "@/context/usePins"
 import { useCategories } from "@/context/useCategories"
 import { usePanelManager } from "@/hooks/usePanelManager"
+import { useConversationUnread } from "@/hooks/useConversations"
 import { notifyLocked } from "@/lib/notify"
 import FilterPanel from "@/components/filter/FilterPanel"
 import { useSidebar } from "@/components/ui/sidebar" // ✅ added for mobile toggle
@@ -73,6 +74,7 @@ const Navbar = ({ visitedIso2 = new Set() }: NavbarProps) => {
   } = usePins()
   const { categories, loading: categoriesLoading } = useCategories()
   const { openPreview } = usePanelManager()
+  const unreadMessages = useConversationUnread()
 
   const unlockedIso2 = visitedIso2 || new Set<string>()
 
@@ -446,6 +448,7 @@ const Navbar = ({ visitedIso2 = new Set() }: NavbarProps) => {
       <div className="ml-auto">
         <DropdownMenu>
           <DropdownMenuTrigger
+            nativeButton={false}
             render={
               <Avatar className="h-8 w-8 cursor-pointer rounded-lg bg-primary/10 text-primary shadow-sm hover:bg-primary/20 transition-all">
                 <AvatarImage src={user?.profileImage || undefined} alt={user?.username ?? "Profile"} />
@@ -459,6 +462,17 @@ const Navbar = ({ visitedIso2 = new Set() }: NavbarProps) => {
             align="end"
             className="rounded-xl border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-lg"
           >
+            <DropdownMenuItem
+              onClick={() => navigate("/messages")}
+              className="flex w-full items-center justify-between gap-2 rounded-lg text-sm hover:bg-muted/40 transition-colors"
+            >
+              <span>Messages</span>
+              {unreadMessages > 0 && (
+                <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold tabular-nums text-primary-foreground">
+                  {unreadMessages}
+                </span>
+              )}
+            </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => navigate("/profile")}
               className="rounded-lg text-sm hover:bg-muted/40 transition-colors"

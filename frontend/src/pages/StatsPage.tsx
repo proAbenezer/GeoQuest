@@ -20,6 +20,8 @@ import {
   ArrowLeft,
   LogOut,
   User,
+  Award,
+  MessageCircle,
 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -34,12 +36,15 @@ import { useAuth } from "@/context/AuthContext"
 import { useUnlockedPlaces } from "@/hooks/useUnlockedPlaces"
 import { useVisitedCountriesPlaces } from "@/hooks/useVisitedCountriesPlaces"
 import { useTravelStats } from "@/hooks/useTravelStats"
+import { useConversationUnread } from "@/hooks/useConversations"
+import { explorerTier } from "@/lib/explorationTier"
 import { StatPanel } from "@/components/stats/StatPanel"
 import WorldMap from "@/components/stats/WorldMap"
 import TravelerProfile from "@/components/stats/TravelerProfile"
 import RegionExploration from "@/components/stats/RegionExploration"
 import RecentCheckins from "@/components/stats/RecentCheckins"
 import CategoryMix from "@/components/stats/CategoryMix"
+import CoTravelersPanel from "@/components/stats/CoTravelersPanel"
 import { formatExplorePercent } from "@/components/layout/sidebar/ExploreProgress"
 import type { CountryStat } from "@/types/place"
 
@@ -83,22 +88,27 @@ export default function StatsPage() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const { data, loading, error, refresh } = useTravelStats()
+  const unreadMessages = useConversationUnread()
   // The world map shading + region-exploration card share ONE seed of the
   // traveler's cached country trees (driven by their unlock progress).
   const { unlocked } = useUnlockedPlaces()
   const { places } = useVisitedCountriesPlaces(null, unlocked)
   const [sortKey, setSortKey] = useState<SortKey>("places")
   const [sortAsc, setSortAsc] = useState(false)
+  // Bumped by the page Refresh button so the co-travelers panel (which reads its
+  // own endpoint, not the materialized /stats summary) refetches in step.
+  const [coTravelersNonce, setCoTravelersNonce] = useState(0)
 
   const unlockedIds = useMemo(() => new Set(unlocked.map((u) => u.placeId)), [unlocked])
 
-  // The country with the most unlocked places drives the region panel — for a
-  // traveler in Ethiopia that's the 11 ADM1 regions, otherwise we fall back to
-  // whatever tree is available for that country.
-  const mainCountry = useMemo<CountryStat | null>(() => {
-    if (!data || !data.countries.length) return null
-    return [...data.countries].sort((a, b) => b.places - a.places)[0]
-  }, [data])
+  // The traveler's exploration level, derived from the materialized summary.
+  const level = data
+    ? explorerTier({
+        totalPlaces: data.summary.totalPlaces,
+        countriesVisited: data.summary.countriesVisited,
+        totalDays: data.summary.totalDays,
+      })
+    : null
 
   const initials = user
     ? `${user.firstName[0] ?? ""}${user.lastName[0] ?? ""}`.toUpperCase()
@@ -116,6 +126,7 @@ export default function StatsPage() {
   const onRefresh = async () => {
     try {
       await refresh()
+      setCoTravelersNonce((n) => n + 1)
     } catch {
       /* handled by hook error state */
     }
@@ -178,6 +189,7 @@ export default function StatsPage() {
           </Link>
           <DropdownMenu>
             <DropdownMenuTrigger
+              nativeButton={false}
               render={
                 <Avatar className="h-8 w-8 cursor-pointer rounded-lg bg-primary/10 text-primary shadow-sm transition-all hover:bg-primary/20">
                   <AvatarImage src={user?.profileImage} alt={user?.username ?? "Profile"} />
@@ -191,6 +203,19 @@ export default function StatsPage() {
               align="end"
               className="rounded-xl border-border/40 bg-background/95 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/60"
             >
+              <DropdownMenuItem
+                onClick={() => navigate("/messages")}
+                className="flex w-full items-center justify-between gap-2 rounded-lg text-sm hover:bg-muted/40"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <MessageCircle className="h-4 w-4" /> Messages
+                </span>
+                {unreadMessages > 0 && (
+                  <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold tabular-nums text-primary-foreground">
+                    {unreadMessages}
+                  </span>
+                )}
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => navigate("/profile")}
                 className="gap-2 rounded-lg text-sm hover:bg-muted/40"
@@ -236,6 +261,80 @@ export default function StatsPage() {
           </div>
         ) : (
           <>
+            {/* Explorer level */}
+            {level && (
+              <StatPanel
+                icon={Award}
+                title="Explorer level"
+                subtitle="Your journey level — explore more places, countries, and days to level up"
+              >
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <Award className="h-6 w-6" />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-lg font-bold leading-tight text-foreground">
+                          {level.name}
+                        </p>
+                        <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                          Level {level.index + 1}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Exploration score {level.score}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    {level.next ? (
+                      <>
+                        <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                          <span>{level.score} pts</span>
+                          <span>
+                            Next: {level.next.name} · {level.next.minScore}
+                          </span>
+                        </div>
+                        <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted">
+                          <div
+                            className="h-full rounded-full bg-primary/80 transition-all duration-500"
+                            style={{ width: `${Math.round(level.progress * 100)}%` }}
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        Top tier — no higher level to reach. 🎉
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="grid shrink-0 grid-cols-3 gap-6 sm:gap-8">
+                    <div>
+                      <p className="text-sm font-bold tabular-nums text-foreground">
+                        {data.summary.totalPlaces}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">Places</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold tabular-nums text-foreground">
+                        {data.summary.countriesVisited}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">Countries</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold tabular-nums text-foreground">
+                        {data.summary.totalDays}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">Active days</p>
+                    </div>
+                  </div>
+                </div>
+              </StatPanel>
+            )}
+
             {/* Hero numbers */}
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <HeroTile
@@ -260,6 +359,9 @@ export default function StatsPage() {
             {/* Traveler profile band */}
             <TravelerProfile summary={data.summary} countries={data.countries} />
 
+            {/* People who've been where the traveler has */}
+            <CoTravelersPanel key={coTravelersNonce} />
+
             {/* World + region exploration */}
             <div className="grid gap-5 lg:grid-cols-5">
               <StatPanel
@@ -275,12 +377,10 @@ export default function StatsPage() {
                   </div>
                 </div>
               </StatPanel>
-              {mainCountry && (
+              {data.countries.length > 0 && (
                 <div className="h-full lg:col-span-2">
                   <RegionExploration
-                    iso2={mainCountry.iso2}
-                    name={mainCountry.name}
-                    overall={mainCountry.explorationPercent}
+                    countries={data.countries}
                     unlockedIds={unlockedIds}
                     places={places}
                   />

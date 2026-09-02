@@ -6,6 +6,7 @@ import { usePlaceLookup } from "@/hooks/usePlaceLookup"
 import { X, MapPin, Plus } from "lucide-react"
 import SidePanel from "@/components/layout/sidebar/SidePanel"
 import CommentSection from "@/components/comments/CommentSection"
+import VisitorsPanel from "@/components/community/VisitorsPanel"
 
 const PreviewPanel = () => {
   const { secondaryPanel, setSecondaryPanel } = usePins()
@@ -92,6 +93,9 @@ const PreviewPanel = () => {
           Cancel
         </button>
 
+        {showComments && placeCheck?.placeId && (
+          <VisitorsPanel placeId={placeCheck.placeId} />
+        )}
         {commentTarget && <CommentSection target={commentTarget} />}
       </div>
     </SidePanel>

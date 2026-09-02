@@ -10,6 +10,7 @@ import {
   integer,
   customType,
   uniqueIndex,
+  index,
   AnyPgColumn
 } from "drizzle-orm/pg-core"
 import { relations, sql } from "drizzle-orm"
@@ -268,6 +269,90 @@ export const commentVotes = pgTable(
     uniqueVotePerUser: uniqueIndex("unique_vote_per_user").on(
       table.commentId,
       table.userId
+    ),
+  })
+)
+
+// ============================================
+// ============================================
+// PRIVATE MESSAGING (1:1 DMs between registered users)
+// ============================================
+// Conversations are shared threads; users join them through
+// conversationParticipants (a 1:1 DM = exactly two participant rows). Guests
+// can never participate — the chat routes are gated behind requireAuth only.
+// lastReadAt on a participant tracks how far they've read, so unread counts
+// are messages written by the OTHER side after it. conversations.updatedAt is
+// bumped on every new message so the inbox can sort by recency.
+export const conversations = pgTable("conversations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+})
+
+export const conversationParticipants = pgTable(
+  "conversation_participants",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    lastReadAt: timestamp("last_read_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqueParticipant: uniqueIndex("unique_participant").on(
+      table.conversationId,
+      table.userId
+    ),
+  })
+)
+
+export const messages = pgTable(
+  "messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    authorUserId: uuid("author_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    conversationMessageIdx: index("conversation_message_idx").on(
+      table.conversationId,
+      table.createdAt
+    ),
+  })
+)
+
+// --- CONNECTIONS (1:1 follows between registered users) ---
+// A row means `followerId` follows `followeeId`. Follows are one-way by design —
+// there is no accept step; a "mutual" follow is just two rows pointing at each
+// other. They power co-traveler discovery ("Connect" with someone who visited a
+// place you've been to) and the Messages → People tab. The unique index keeps
+// follows idempotent (POST can rely on onConflictDoNothing).
+export const connections = pgTable(
+  "connections",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    followerId: uuid("follower_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    followeeId: uuid("followee_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqueConnection: uniqueIndex("unique_connection").on(
+      table.followerId,
+      table.followeeId
     ),
   })
 )

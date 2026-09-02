@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useImageUpload } from "@/hooks/useImageUpload"
+import { useTravelStats } from "@/hooks/useTravelStats"
+import { explorerTier } from "@/lib/explorationTier"
 
 const USERNAME_REGEX = /^[a-zA-Z0-9_]+$/
 
@@ -17,6 +19,7 @@ const ProfilePage = () => {
 
   const { uploadImage: uploadAvatar, uploading: uploadingAvatar } = useImageUpload()
   const { uploadImage: uploadBanner, uploading: uploadingBanner } = useImageUpload()
+  const { data: statsData } = useTravelStats()
 
   const [error, setError] = useState<string | null>(null)
   const [, setUpdating] = useState(false)
@@ -39,6 +42,17 @@ const ProfilePage = () => {
   if (!user) return null
 
   const initials = `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase()
+
+  // Tiered exploration badge (mirrors the stats page band) — only meaningful
+  // once the traveler has unlocked at least one place.
+  const levelChip =
+    statsData && statsData.summary.totalPlaces > 0
+      ? explorerTier({
+          totalPlaces: statsData.summary.totalPlaces,
+          countriesVisited: statsData.summary.countriesVisited,
+          totalDays: statsData.summary.totalDays,
+        })
+      : null
 
   const startEditing = () => {
     setFormFirstName(user.firstName)
@@ -283,7 +297,14 @@ const ProfilePage = () => {
                   <h2 className="text-xl font-semibold">
                     {user.firstName} {user.lastName}
                   </h2>
-                  <p className="text-sm text-muted-foreground">@{user.username}</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                    <p className="text-sm text-muted-foreground">@{user.username}</p>
+                    {levelChip && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-[11px] font-semibold text-primary">
+                        {levelChip.name} · Level {levelChip.index + 1}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <Button
                   variant="outline"

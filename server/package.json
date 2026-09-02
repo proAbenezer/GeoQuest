@@ -4,13 +4,13 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-  "dev": "tsx watch src/server.ts",
-  "build": "npm install && npm run build",
-  "start": "tsx src/server.ts",
-  "db:generate": "drizzle-kit generate",
-  "db:migrate": "drizzle-kit migrate",
-  "fetch:country": "tsx src/scripts/fetchCountry.ts"
-},
+    "dev": "tsx watch src/server.ts",
+    "build": "npm install && npm run build",
+    "start": "tsx src/server.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "fetch:country": "tsx src/scripts/fetchCountry.ts"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -24,6 +24,7 @@
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
     "i18n-iso-countries": "^7.14.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
