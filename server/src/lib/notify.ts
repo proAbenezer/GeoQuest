@@ -13,6 +13,7 @@ export type NotificationType =
   | "connection_request"
   | "connection_accepted"
   | "comment_vote"
+  | "comment"
   | "place_unlock"
   | "message"
   | "follow"

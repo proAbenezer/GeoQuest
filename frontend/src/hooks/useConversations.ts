@@ -123,19 +123,25 @@ export function useChatThread(conversationId: string | null) {
     })
   }, [])
 
+  // Send returns { ok, error } so the composer can tell a transient failure from
+  // the server's "you're no longer connected" 403 and react accordingly (the
+  // peer dropped off mid-thread — the thread pane swaps to its reconnect prompt).
   const send = useCallback(
-    async (body: string): Promise<boolean> => {
+    async (body: string): Promise<{ ok: boolean; error?: string }> => {
       const id = idRef.current
-      if (!id || !body.trim()) return false
+      if (!id || !body.trim()) return { ok: false }
       try {
         const data = await json<{ message: ChatMessage }>(
           `/community/conversations/${id}/messages`,
           { method: "POST", body: JSON.stringify({ body }) }
         )
         merge([data.message])
-        return true
-      } catch {
-        return false
+        return { ok: true }
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : undefined,
+        }
       }
     },
     [merge]

@@ -120,6 +120,20 @@
       "when": 1788550000000,
       "tag": "0016_public_pins_follows_groups",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788750000000,
+      "tag": "0017_route_photos",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1788850000000,
+      "tag": "0018_group_profile_place",
+      "breakpoints": true
     }
   ]
 }

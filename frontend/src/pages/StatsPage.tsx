@@ -45,6 +45,7 @@ import RegionExploration from "@/components/stats/RegionExploration"
 import RecentCheckins from "@/components/stats/RecentCheckins"
 import CategoryMix from "@/components/stats/CategoryMix"
 import CoTravelersPanel from "@/components/stats/CoTravelersPanel"
+import { NotificationBell } from "@/components/notifications/NotificationBell"
 import { formatExplorePercent } from "@/components/layout/sidebar/ExploreProgress"
 import type { CountryStat } from "@/types/place"
 
@@ -187,6 +188,7 @@ export default function StatsPage() {
             <ArrowLeft className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Map</span>
           </Link>
+          <NotificationBell />
           <DropdownMenu>
             <DropdownMenuTrigger
               nativeButton={false}
@@ -204,6 +206,12 @@ export default function StatsPage() {
               className="rounded-xl border-border/40 bg-background/95 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/60"
             >
               <DropdownMenuItem
+                onClick={() => navigate("/profile")}
+                className="gap-2 rounded-lg text-sm hover:bg-muted/40"
+              >
+                <User className="h-4 w-4" /> Profile
+              </DropdownMenuItem>
+              <DropdownMenuItem
                 onClick={() => navigate("/messages")}
                 className="flex w-full items-center justify-between gap-2 rounded-lg text-sm hover:bg-muted/40"
               >
@@ -215,12 +223,6 @@ export default function StatsPage() {
                     {unreadMessages}
                   </span>
                 )}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => navigate("/profile")}
-                className="gap-2 rounded-lg text-sm hover:bg-muted/40"
-              >
-                <User className="h-4 w-4" /> Profile
               </DropdownMenuItem>
               <DropdownMenuSeparator className="bg-border/40" />
               <DropdownMenuItem

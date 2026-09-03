@@ -1,9 +1,17 @@
 // routes/comments.ts
 import { Router } from "express"
 import { z } from "zod"
-import { eq, and, inArray, sql, type SQL } from "drizzle-orm"
+import { eq, and, or, inArray, sql, type SQL } from "drizzle-orm"
 import { db } from "../db/index.ts"
-import { comments, commentVotes, users, pins, places } from "../db/schema.ts"
+import {
+  comments,
+  commentVotes,
+  users,
+  pins,
+  places,
+  follows,
+  connections,
+} from "../db/schema.ts"
 import { optionalAuth, requireAuth } from "../middleware/auth.ts"
 import { ensureGuestSession } from "../middleware/guest.ts"
 import { notify } from "../lib/notify.ts"
@@ -19,6 +27,7 @@ const router = Router()
 interface CommentDTO {
   id: string
   body: string
+  imageUrl: string | null
   parentId: string | null
   createdAt: string
   author: {
@@ -39,6 +48,7 @@ type CommentNode = CommentDTO & { replies: CommentNode[] }
 
 const createCommentSchema = z.object({
   body: z.string().min(1, "Comment is required").max(2000, "Comment is too long"),
+  imageUrl: z.string().url().max(1000).optional(),
   parentId: z.string().uuid().optional(),
   targetType: z.enum(["pin", "location", "route"]).optional(),
   pinId: z.string().uuid().optional(),
@@ -77,6 +87,7 @@ async function fetchComments(
     .select({
       id: comments.id,
       body: comments.body,
+      imageUrl: comments.imageUrl,
       parentId: comments.parentId,
       createdAt: comments.createdAt,
       authorId: users.id,
@@ -118,6 +129,7 @@ async function fetchComments(
   return rows.map((r) => ({
     id: r.id,
     body: r.body,
+    imageUrl: r.imageUrl,
     parentId: r.parentId,
     createdAt: new Date(r.createdAt).toISOString(),
     author: {
@@ -196,6 +208,123 @@ async function checkPinsViewable(
     }
   }
   return { ok: true }
+}
+
+// Fans out a "new comment" activity to the comment author's followers — the
+// one-way audience follow grants — gated so each recipient can actually SEE the
+// thread's target (followers only care about content they can view). Follow is
+// not mutual, so this deliberately does NOT reach plain connections unless they
+// also follow the author. Best-effort: notify() swallows its own errors and the
+// caller already committed the comment, so nothing here can fail the write.
+//
+// Visibility per target:
+//   - location  -> community-open, every follower sees it.
+//   - pin/route -> a follower must be able to view every endpoint pin (the pin
+//                  is theirs, or it's public AND they connect-or-follow the
+//                  owner). The author's own private pins therefore never fire.
+// refId is the pin the comment is about (a route's start pin) so the app can
+// deep-link to the map; location comments have no pin to focus, so refId is null.
+async function notifyCommentFollowers(created: {
+  authorUserId: string | null
+  body: string
+  targetType: string | null
+  pinId: string | null
+  routeStartPinId: string | null
+  routeEndPinId: string | null
+}) {
+  const authorId = created.authorUserId
+  if (!authorId) return
+
+  const followerRows = await db
+    .select({ followerId: follows.followerId })
+    .from(follows)
+    .where(eq(follows.followeeId, authorId))
+  if (followerRows.length === 0) return
+  const qualified = new Set(followerRows.map((r) => r.followerId))
+  qualified.delete(authorId) // an author can't follow themselves, but stay safe
+
+  // Which endpoint pin(s) the comment sits on.
+  let pinIds: string[] = []
+  if (created.targetType === "pin" && created.pinId) {
+    pinIds = [created.pinId]
+  } else if (
+    created.targetType === "route" &&
+    created.routeStartPinId &&
+    created.routeEndPinId
+  ) {
+    pinIds = [created.routeStartPinId, created.routeEndPinId]
+  }
+  const refId =
+    created.targetType === "route" ? created.routeStartPinId : created.pinId
+
+  if (pinIds.length > 0) {
+    const rows = await db
+      .select({ id: pins.id, userId: pins.userId, visibility: pins.visibility })
+      .from(pins)
+      .where(inArray(pins.id, pinIds))
+    for (const pin of rows) {
+      if (qualified.size === 0) return
+      const owner = pin.userId
+      // Followers who can view THIS pin: its owner (own content is always
+      // visible) plus, when the pin is public, anyone connected to or
+      // following the owner. Symmetric accepted edges count either direction.
+      const canSee = new Set<string>()
+      if (owner && qualified.has(owner)) canSee.add(owner)
+      if (owner && pin.visibility === "public" && qualified.size > 0) {
+        const ids = [...qualified]
+        const [followEdges, connRows] = await Promise.all([
+          db
+            .select({ followerId: follows.followerId })
+            .from(follows)
+            .where(
+              and(eq(follows.followeeId, owner), inArray(follows.followerId, ids))
+            ),
+          db
+            .select({
+              followerId: connections.followerId,
+              followeeId: connections.followeeId,
+            })
+            .from(connections)
+            .where(
+              and(
+                eq(connections.status, "accepted"),
+                or(
+                  and(
+                    eq(connections.followerId, owner),
+                    inArray(connections.followeeId, ids)
+                  ),
+                  and(
+                    inArray(connections.followerId, ids),
+                    eq(connections.followeeId, owner)
+                  )
+                )
+              )
+            ),
+        ])
+        for (const e of followEdges) canSee.add(e.followerId)
+        for (const c of connRows) {
+          // Whichever side is the viewer (not the owner) is the connected follower.
+          if (c.followerId === owner) canSee.add(c.followeeId)
+          else canSee.add(c.followerId)
+        }
+      }
+      // A follower must see EVERY target pin to see the comment.
+      for (const f of [...qualified]) if (!canSee.has(f)) qualified.delete(f)
+    }
+  }
+
+  if (qualified.size === 0) return
+  await Promise.all(
+    [...qualified].map((recipientUserId) =>
+      notify({
+        recipientUserId,
+        actorUserId: authorId,
+        type: "comment",
+        refId: refId ?? null,
+        context: created.body.slice(0, 200),
+      })
+    )
+  )
 }
 
 // Parses a target from query params for GET /comments.
@@ -292,6 +421,13 @@ router.post("/", requireAuth, async (req, res) => {
       .limit(1)
     if (!parent) return res.status(404).json({ error: "Parent comment not found" })
 
+    // Photos belong to route posts. A reply under a route thread may carry one,
+    // but pin/location replies stay text-only — the field is otherwise meaningless.
+    const replyImage = parsed.data.imageUrl
+    if (replyImage && parent.targetType !== "route") {
+      return res.status(400).json({ error: "Only route posts can include a photo" })
+    }
+
     // A reply stands on the parent's target, so it obeys the same visibility
     // rules — you can't reply under a private/foreign pin's thread you can't see.
     if (parent.targetType === "pin" || parent.targetType === "route") {
@@ -307,6 +443,7 @@ router.post("/", requireAuth, async (req, res) => {
       .insert(comments)
       .values({
         body,
+        imageUrl: replyImage ?? null,
         parentId,
         targetType: parent.targetType,
         pinId: parent.pinId,
@@ -319,10 +456,14 @@ router.post("/", requireAuth, async (req, res) => {
       })
       .returning()
 
+    // Follow-activity: the author's followers who can see this thread are told.
+    await notifyCommentFollowers(created)
+
     return res.status(201).json({
       comment: {
         id: created.id,
         body: created.body,
+        imageUrl: created.imageUrl,
         parentId: created.parentId,
         createdAt: new Date(created.createdAt).toISOString(),
         author: { id: userId },
@@ -335,6 +476,12 @@ router.post("/", requireAuth, async (req, res) => {
   // Top-level comment — resolve the target and snapshot its coordinates.
   const targetType = parsed.data.targetType
   if (!targetType) return res.status(400).json({ error: "targetType is required" })
+
+  // Only route posts (a start→end pin pair thread) accept a photo.
+  const topImage = parsed.data.imageUrl
+  if (topImage && targetType !== "route") {
+    return res.status(400).json({ error: "Only route posts can include a photo" })
+  }
 
   let pinId: string | null = null
   let placeId: string | null = null
@@ -385,6 +532,7 @@ router.post("/", requireAuth, async (req, res) => {
     .insert(comments)
     .values({
       body,
+      imageUrl: topImage ?? null,
       targetType,
       pinId,
       placeId,
@@ -396,10 +544,14 @@ router.post("/", requireAuth, async (req, res) => {
     })
     .returning()
 
+  // Follow-activity: the author's followers who can see this thread are told.
+  await notifyCommentFollowers(created)
+
   res.status(201).json({
     comment: {
       id: created.id,
       body: created.body,
+      imageUrl: created.imageUrl,
       parentId: created.parentId,
       createdAt: new Date(created.createdAt).toISOString(),
       author: { id: userId },

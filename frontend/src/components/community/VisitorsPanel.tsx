@@ -74,6 +74,8 @@ export default function VisitorsPanel({ placeId }: { placeId: string }) {
                 lastName={v.lastName}
                 profileImage={v.profileImage}
                 connected={v.connected ?? false}
+                incomingPending={v.incomingPending ?? false}
+                outgoingPending={v.outgoingPending ?? false}
                 subtitle={`visited ${formatDay(v.visitedAt) || "recently"}`}
               />
             ))}

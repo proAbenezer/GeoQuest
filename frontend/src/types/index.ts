@@ -28,6 +28,10 @@ export interface Pin {
   countryCode?: string   // e.g., "US", "GB", "FR"
   // Icons for this pin (multi-icon support); falls back to the category's icons
   icons?: string[]
+  // NEW: who may see this pin. 'public' = the owner's connections + followers
+  // (set at create/edit time by the owner); 'private' = owner-only. Absent for
+  // pins created before the field existed.
+  visibility?: "public" | "private"
 }
 
 // Optional: if you use a separate type for temporary POIs from Mapbox
@@ -45,6 +49,8 @@ export interface CommentAuthor {
 export interface Comment {
   id: string
   body: string
+  // Optional photo on a route post — only route-target comments carry one.
+  imageUrl?: string | null
   parentId: string | null
   createdAt: string
   author: CommentAuthor

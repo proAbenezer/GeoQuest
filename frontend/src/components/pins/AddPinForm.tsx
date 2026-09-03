@@ -2,8 +2,9 @@
 import { useState, useEffect, useMemo } from "react"
 import { usePins } from "@/context/usePins"
 import { useCategories } from "@/context/useCategories"
+import { useAuth } from "@/context/AuthContext"
 import { Button } from "@/components/ui/button"
-import { X, Lock, Tag, ImageOff, MapPin } from "lucide-react"
+import { X, Lock, Tag, ImageOff, MapPin, Globe } from "lucide-react"
 import { useLocationSearch } from "@/hooks/useLocationSearch"
 import { usePlaceLookup } from "@/hooks/usePlaceLookup"
 import { usePanelManager } from "@/hooks/usePanelManager"
@@ -27,6 +28,7 @@ const AddPinPanel = () => {
   const { closeAllPanels } = usePanelManager()
   const { markAsPinned } = useRecentlyVisited()
   const { categories, loading: categoriesLoading, addCategory } = useCategories()
+  const { user } = useAuth()
 
   const recentlyVisitedId = secondaryPanel?.type === "addPin" ? secondaryPanel.recentlyVisitedId : null
 
@@ -35,6 +37,9 @@ const AddPinPanel = () => {
   const [categoryId, setCategoryId] = useState("")
   const [imageUrl, setImageUrl] = useState("")
   const [pinIcons, setPinIcons] = useState<string[]>([])
+  // Public pins surface to the creator's connections + followers. Guests have no
+  // social graph, so the toggle is hidden and the value stays private.
+  const [visibility, setVisibility] = useState<"public" | "private">("private")
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [imageUploading, setImageUploading] = useState(false)
   const [nameTouched, setNameTouched] = useState(false)
@@ -81,6 +86,7 @@ const AddPinPanel = () => {
     setCategoryId("")
     setImageUrl("")
     setPinIcons([])
+    setVisibility("private")
     setUploadError(null)
     setImageUploading(false)
     setNameTouched(false)
@@ -136,6 +142,7 @@ const AddPinPanel = () => {
         placeId: placeCheck.placeId,
         imageUrl: imageUrl.trim() || undefined,
         icons: pinIcons,
+        visibility,
       })
 
       if (recentlyVisitedId) {
@@ -150,6 +157,7 @@ const AddPinPanel = () => {
       setCategoryId("")
       setImageUrl("")
       setPinIcons([])
+      setVisibility("private")
       setUploadError(null)
       setImageUploading(false)
       setNameTouched(false)
@@ -254,6 +262,64 @@ const AddPinPanel = () => {
                 </span>
               </div>
             )}
+
+            {/* Who can see this pin — kept near the top of the form (above the
+                photo/notes card) so the public/private choice is obvious, since a
+                public pin is what others + groups can reference. Guests have no
+                social graph, so they get a one-line note instead of the toggle
+                (their pins are always saved private server-side). */}
+            <div className="rounded-xl border bg-card/50 p-3 space-y-2">
+              <div className="flex items-center gap-2 px-1 text-muted-foreground">
+                {user && visibility === "public" ? (
+                  <Globe className="h-3.5 w-3.5" />
+                ) : (
+                  <Lock className="h-3.5 w-3.5" />
+                )}
+                <h3 className="text-xs font-semibold uppercase tracking-wider">Who can see this pin?</h3>
+              </div>
+              {user ? (
+                <>
+                  <div className="flex gap-1 rounded-lg bg-muted/50 p-1">
+                    <button
+                      type="button"
+                      onClick={() => setVisibility("private")}
+                      className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
+                        visibility === "private"
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <Lock className="h-3.5 w-3.5" />
+                      Private
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVisibility("public")}
+                      className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
+                        visibility === "public"
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <Globe className="h-3.5 w-3.5" />
+                      Public
+                    </button>
+                  </div>
+                  <p className="px-1 text-[11px] leading-snug text-muted-foreground">
+                    {visibility === "public"
+                      ? "Your connections and followers can see and comment on this pin."
+                      : "Only you can see this pin. You can make it public later."}
+                  </p>
+                </>
+              ) : (
+                <p className="flex items-start gap-1.5 px-1 text-[11px] leading-snug text-muted-foreground">
+                  <Lock className="h-3 w-3 shrink-0 mt-0.5" />
+                  Public/Private is for registered travelers — this pin will be
+                  saved as private. Sign in to share pins with your connections
+                  and followers.
+                </p>
+              )}
+            </div>
 
             <div className="rounded-xl border bg-card/50 p-3 space-y-3">
               <PinFormFields

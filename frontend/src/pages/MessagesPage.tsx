@@ -7,7 +7,7 @@
 //
 // Data comes from the community API through useConversations (REST + polling):
 // the list refreshes every ~10s, an open thread polls new messages every ~5s.
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import {
   MapPin,
@@ -21,6 +21,7 @@ import {
   Search,
   Users,
   X,
+  UserPlus,
 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -33,16 +34,19 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/context/AuthContext"
+import { useChatThread, useConversationList } from "@/hooks/useConversations"
+import { useMyGroups } from "@/hooks/useGroups"
 import {
-  openConversation,
-  useChatThread,
-  useConversationList,
-} from "@/hooks/useConversations"
-import { searchUsers, useConnections } from "@/hooks/useConnections"
+  connectUser,
+  searchUsers,
+  useConnectionRequests,
+  useConnections,
+} from "@/hooks/useConnections"
 import { PersonRow } from "@/components/community/PersonRow"
+import { NotificationBell } from "@/components/notifications/NotificationBell"
 import type { ConversationSummary, UserSearchResult } from "@/types/community"
 
-type LeftTab = "chats" | "people"
+type LeftTab = "chats" | "groups" | "people"
 
 function initialsOf(first?: string, last?: string): string {
   return `${first?.[0] ?? ""}${last?.[0] ?? ""}`.toUpperCase() || "?"
@@ -74,14 +78,13 @@ function listTime(iso: string): string {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" })
 }
 
-// Caption for a followed user in the People tab ("3 places in common · follows
-// you"). A mutual follow surfaces as "follows you back".
-function connectionSubtitle(c: { sharedPlaces: number; followsMe: boolean }): string {
+// Caption for a connected user in the People tab ("3 places in common"). The
+// Messages view only lists users I'm connected to (mutual accept).
+function connectionSubtitle(c: { sharedPlaces: number }): string {
   const parts: string[] = []
   if (c.sharedPlaces > 0) {
     parts.push(`${c.sharedPlaces} place${c.sharedPlaces === 1 ? "" : "s"} in common`)
   }
-  if (c.followsMe) parts.push("follows you back")
   return parts.join(" · ")
 }
 
@@ -90,12 +93,16 @@ export default function MessagesPage() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const { conversations, loading } = useConversationList()
+  const { groups: myGroups, loading: groupsLoading } = useMyGroups()
   const activeId = conversationId ?? null
   const active = conversations.find((c) => c.id === activeId) ?? null
   const thread = useChatThread(activeId)
   const [draft, setDraft] = useState("")
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
+  // When the peer of an open thread is no longer a connection (they disconnected
+  // or the request lapsed), the composer is replaced by a reconnect prompt.
+  const [reconnectSent, setReconnectSent] = useState(false)
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
   // Left-pane surfaces: find any traveler by username, or browse the people you
@@ -104,9 +111,55 @@ export default function MessagesPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<UserSearchResult[]>([])
   const [searching, setSearching] = useState(false)
-  const { connections, loading: peopleLoading, removeConnection } = useConnections()
+  const { connections, loading: peopleLoading, refresh: refreshConnections } = useConnections()
+  const { incoming, outgoing, refresh: refreshRequests } = useConnectionRequests()
+  const connectionsById = useMemo(
+    () => new Map(connections.map((c) => [c.userId, c])),
+    [connections]
+  )
 
   const searchActive = searchQuery.trim().length >= 2
+
+  // After a request accept/decline in the People tab or search results, the
+  // friend + requests lists and the current thread's connect-gate all need the
+  // fresh relation state.
+  const refreshRelations = () => {
+    void refreshConnections()
+    void refreshRequests()
+  }
+
+  // ---- Connect-gate for an open thread ----
+  // The server forbids messaging anyone you're not connected to. If the peer of
+  // the open conversation dropped off the connections list (they disconnected,
+  // or a fresh request is still pending), swap the composer for a reconnect
+  // prompt instead of letting sends fail with a 403.
+  const activePeer = active?.withUser ?? thread.withUser ?? null
+  const activePeerId = activePeer?.userId ?? null
+  const activePeerName = activePeer
+    ? `${activePeer.firstName} ${activePeer.lastName}`.trim() || "this traveler"
+    : "this traveler"
+  // While the connections list is still loading, don't gate — treat the peer as
+  // connected until we actually know they're gone.
+  const activePeerConnected = activePeerId
+    ? peopleLoading || connectionsById.has(activePeerId)
+    : true
+
+  // Reset the transient "request sent" copy whenever the thread changes.
+  useEffect(() => {
+    setReconnectSent(false)
+  }, [activeId])
+
+  const reconnectToPeer = async () => {
+    if (!activePeerId || reconnectSent) return
+    const result = await connectUser(activePeerId)
+    if (result?.connected) {
+      // They'd actually asked me while I wasn't looking — accept = connected.
+      setReconnectSent(false)
+      refreshRelations()
+    } else if (result?.pending) {
+      setReconnectSent(true)
+    }
+  }
 
   // Debounced username/name search (mirrors the Navbar's Mapbox search cadence).
   useEffect(() => {
@@ -123,19 +176,6 @@ export default function MessagesPage() {
     }, 300)
     return () => clearTimeout(t)
   }, [searchQuery])
-
-  // Open (or reuse) a thread with any searched traveler, then jump into it.
-  const openThreadWith = async (otherUserId: string) => {
-    try {
-      const convo = await openConversation(otherUserId)
-      setSearchQuery("")
-      setSearchResults([])
-      setLeftTab("chats")
-      navigate(`/messages/${convo.id}`)
-    } catch {
-      /* conversation failed to open — the list stays put */
-    }
-  }
 
   const clearSearch = () => {
     setSearchQuery("")
@@ -221,39 +261,184 @@ export default function MessagesPage() {
       </ul>
     )
 
+  const peopleLoadingOrEmpty =
+    peopleLoading && connections.length === 0 && incoming.length === 0 && outgoing.length === 0
+  const noPeople =
+    !peopleLoading && connections.length === 0 && incoming.length === 0 && outgoing.length === 0
+
   const peopleContent =
-    peopleLoading && connections.length === 0 ? (
+    peopleLoadingOrEmpty ? (
       <div className="flex items-center justify-center py-10">
         <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
       </div>
-    ) : connections.length === 0 ? (
+    ) : noPeople ? (
       <div className="flex flex-col items-center gap-3 p-6 text-center">
         <Users className="h-8 w-8 text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">You're not following anyone yet.</p>
+        <p className="text-sm text-muted-foreground">No connections yet.</p>
         <p className="max-w-[16rem] text-xs text-muted-foreground/70">
           Connect with travelers who've been where you've been — on your stats
-          board or from a place's People list.
+          board or from a place's People list — and they'll appear here once
+          they accept.
         </p>
         <Link to="/stats">
           <Button size="sm">See co-travelers</Button>
         </Link>
       </div>
     ) : (
-      <ul className="flex flex-col">
-        {connections.map((p) => (
-          <PersonRow
-            key={p.userId}
-            userId={p.userId}
-            firstName={p.firstName}
-            lastName={p.lastName}
-            username={p.username}
-            profileImage={p.profileImage}
-            connected
-            subtitle={connectionSubtitle(p)}
-            onUnfollowed={(id) => removeConnection(id)}
-          />
-        ))}
-      </ul>
+      <div className="flex flex-col">
+        {incoming.length > 0 && (
+          <div className="border-b border-border/40">
+            <p className="px-4 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Requests
+            </p>
+            <ul className="flex flex-col divide-y divide-border/40 px-4">
+              {incoming.map((p) => (
+                <PersonRow
+                  key={p.userId}
+                  userId={p.userId}
+                  firstName={p.firstName}
+                  lastName={p.lastName}
+                  username={p.username}
+                  profileImage={p.profileImage}
+                  incomingPending
+                  subtitle="wants to connect"
+                  onChanged={refreshRelations}
+                />
+              ))}
+            </ul>
+          </div>
+        )}
+        {outgoing.length > 0 && (
+          <div className="border-b border-border/40">
+            <p className="px-4 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Sent
+            </p>
+            <ul className="flex flex-col divide-y divide-border/40 px-4">
+              {outgoing.map((p) => (
+                <PersonRow
+                  key={p.userId}
+                  userId={p.userId}
+                  firstName={p.firstName}
+                  lastName={p.lastName}
+                  username={p.username}
+                  profileImage={p.profileImage}
+                  outgoingPending
+                  subtitle="request sent"
+                  onChanged={refreshRelations}
+                />
+              ))}
+            </ul>
+          </div>
+        )}
+        {connections.length > 0 && (
+          <div>
+            <p className="px-4 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Connections
+            </p>
+            <ul className="flex flex-col divide-y divide-border/40 px-4">
+              {connections.map((p) => (
+                <PersonRow
+                  key={p.userId}
+                  userId={p.userId}
+                  firstName={p.firstName}
+                  lastName={p.lastName}
+                  username={p.username}
+                  profileImage={p.profileImage}
+                  connected
+                  subtitle={connectionSubtitle(p)}
+                  onChanged={refreshRelations}
+                />
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    )
+
+  // Co-traveler group inbox — rows open the group's full chat page; "+ New
+  // group" opens the create screen inside Messages (name, photo, linked place).
+  const groupsContent =
+    groupsLoading && myGroups.length === 0 ? (
+      <div className="flex items-center justify-center py-10">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    ) : myGroups.length === 0 ? (
+      <div className="flex flex-col items-center gap-3 p-6 text-center">
+        <Users className="h-8 w-8 text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">No groups yet.</p>
+        <p className="max-w-[16rem] text-xs text-muted-foreground/70">
+          Create a group to plan a trip with travelers you've crossed paths with —
+          name it, add a photo and a linked place, then invite people.
+        </p>
+        <Link to="/messages/new-group">
+          <Button size="sm" className="gap-1.5">
+            <UserPlus className="h-3.5 w-3.5" />
+            Create a group
+          </Button>
+        </Link>
+      </div>
+    ) : (
+      <>
+        <div className="flex items-center justify-between border-b border-border/40 px-4 py-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {myGroups.length} group{myGroups.length === 1 ? "" : "s"}
+          </p>
+          <Link
+            to="/messages/new-group"
+            className="inline-flex items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary/80"
+          >
+            <UserPlus className="h-3.5 w-3.5" />
+            New group
+          </Link>
+        </div>
+        <ul className="flex flex-col">
+        {myGroups.map((g) => {
+          const mine = g.lastMessage && g.lastMessage.authorUserId === user?.id
+          const sender = g.lastMessage?.author
+            ? `${g.lastMessage.author.firstName}${g.lastMessage.author.lastName ? ` ${g.lastMessage.author.lastName}` : ""}`
+            : ""
+          return (
+            <li key={g.id}>
+              <button
+                type="button"
+                onClick={() => navigate(`/messages/groups/${g.id}`)}
+                className="flex w-full items-center gap-3 border-b border-border/40 px-4 py-3 text-left transition-colors hover:bg-muted/40"
+              >
+                <Avatar className="h-9 w-9 shrink-0 rounded-full bg-muted text-xs text-muted-foreground">
+                  <AvatarImage
+                    src={g.imageUrl ?? g.createdBy?.profileImage ?? undefined}
+                    alt={g.name}
+                  />
+                  <AvatarFallback className="bg-transparent">
+                    <Users className="h-4 w-4" />
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <p className="truncate text-sm font-semibold text-foreground">{g.name}</p>
+                    <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                      {listTime(g.lastMessage?.createdAt ?? g.updatedAt)}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 flex items-center gap-2">
+                    <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                      {g.lastMessage
+                        ? `${mine ? "You: " : sender ? `${sender}: ` : ""}${g.lastMessage.body}`
+                        : `${g.memberCount} member${g.memberCount === 1 ? "" : "s"} — no messages yet`}
+                    </p>
+                    {g.unreadCount > 0 && (
+                      <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold tabular-nums text-primary-foreground">
+                        {g.unreadCount}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </button>
+            </li>
+          )
+        })}
+        </ul>
+      </>
     )
 
   useEffect(() => {
@@ -275,10 +460,18 @@ export default function MessagesPage() {
     if (!text || sending) return
     setSending(true)
     setSendError(null)
-    const ok = await thread.send(text)
+    const res = await thread.send(text)
     setSending(false)
-    if (ok) setDraft("")
-    else setSendError("Couldn't send the message — check your connection and try again.")
+    if (res.ok) {
+      setDraft("")
+    } else {
+      // A failed send is almost always the peer having disconnected mid-thread
+      // (the server 403s once the mutual connection is gone). Refresh the
+      // relations so the composer is replaced by the reconnect prompt instead of
+      // letting the next attempt hit the same 403.
+      setSendError(res.error ?? "Couldn't send the message — try again.")
+      refreshRelations()
+    }
   }
 
   const initials = user
@@ -307,6 +500,7 @@ export default function MessagesPage() {
             <ArrowLeft className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Map</span>
           </Link>
+          <NotificationBell />
           <DropdownMenu>
             <DropdownMenuTrigger
               nativeButton={false}
@@ -324,16 +518,16 @@ export default function MessagesPage() {
               className="rounded-xl border-border/40 bg-background/95 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/60"
             >
               <DropdownMenuItem
-                onClick={() => navigate("/stats")}
-                className="gap-2 rounded-lg text-sm hover:bg-muted/40"
-              >
-                Stats
-              </DropdownMenuItem>
-              <DropdownMenuItem
                 onClick={() => navigate("/profile")}
                 className="gap-2 rounded-lg text-sm hover:bg-muted/40"
               >
                 <User className="h-4 w-4" /> Profile
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => navigate("/stats")}
+                className="gap-2 rounded-lg text-sm hover:bg-muted/40"
+              >
+                Stats
               </DropdownMenuItem>
               <DropdownMenuSeparator className="bg-border/40" />
               <DropdownMenuItem
@@ -380,9 +574,9 @@ export default function MessagesPage() {
             </div>
           </div>
 
-          {/* Chats | People */}
+          {/* Chats | Groups | People */}
           <div className="flex items-center gap-1 border-b border-border/40 px-3">
-            {(["chats", "people"] as const).map((tab) => (
+            {(["chats", "groups", "people"] as const).map((tab) => (
               <button
                 key={tab}
                 type="button"
@@ -396,10 +590,12 @@ export default function MessagesPage() {
               >
                 {tab === "chats" ? (
                   <MessageCircle className="h-3.5 w-3.5" />
-                ) : (
+                ) : tab === "groups" ? (
                   <Users className="h-3.5 w-3.5" />
+                ) : (
+                  <User className="h-3.5 w-3.5" />
                 )}
-                {tab === "chats" ? "Chats" : "People"}
+                {tab === "chats" ? "Chats" : tab === "groups" ? "Groups" : "People"}
               </button>
             ))}
           </div>
@@ -421,39 +617,27 @@ export default function MessagesPage() {
                   </p>
                 </div>
               ) : (
-                <ul className="flex flex-col">
+                <ul className="flex flex-col divide-y divide-border/40 px-4">
                   {searchResults.map((r) => (
-                    <li key={r.userId}>
-                      <button
-                        type="button"
-                        onClick={() => void openThreadWith(r.userId)}
-                        className="flex w-full items-center gap-3 border-b border-border/40 px-4 py-3 text-left transition-colors hover:bg-muted/40"
-                      >
-                        <Avatar className="h-9 w-9 shrink-0 rounded-full bg-muted text-xs text-muted-foreground">
-                          <AvatarImage
-                            src={r.profileImage ?? undefined}
-                            alt={`${r.firstName} ${r.lastName}`}
-                          />
-                          <AvatarFallback className="bg-transparent">
-                            {initialsOf(r.firstName, r.lastName)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-foreground">
-                            {`${r.firstName} ${r.lastName}`.trim()}
-                          </p>
-                          <p className="truncate text-[11px] text-muted-foreground">
-                            @{r.username}
-                          </p>
-                        </div>
-                        <MessageCircle className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      </button>
-                    </li>
+                    <PersonRow
+                      key={r.userId}
+                      userId={r.userId}
+                      firstName={r.firstName}
+                      lastName={r.lastName}
+                      username={r.username}
+                      profileImage={r.profileImage}
+                      connected={r.connected}
+                      incomingPending={r.incomingPending}
+                      outgoingPending={r.outgoingPending}
+                      onChanged={refreshRelations}
+                    />
                   ))}
                 </ul>
               )
             ) : leftTab === "people" ? (
               peopleContent
+            ) : leftTab === "groups" ? (
+              groupsContent
             ) : (
               chatsContent
             )}
@@ -553,31 +737,64 @@ export default function MessagesPage() {
                   {sendError}
                 </p>
               )}
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  void submit()
-                }}
-                className="flex items-center gap-2 border-t border-border/40 p-3"
-              >
-                <input
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  placeholder="Write a message…"
-                  maxLength={4000}
-                  autoFocus
-                  className="min-w-0 flex-1 rounded-xl border border-border/40 bg-card/40 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:outline-none"
-                />
-                <Button
-                  type="submit"
-                  size="icon"
-                  disabled={!draft.trim() || sending}
-                  className="shrink-0 rounded-xl"
-                  aria-label="Send"
+              {activePeerId && !activePeerConnected ? (
+                <div className="flex items-center justify-between gap-3 border-t border-border/40 px-4 py-3">
+                  <div className="min-w-0">
+                    {reconnectSent ? (
+                      <p className="text-sm text-muted-foreground">
+                        Request sent — waiting for {activePeerName} to accept.
+                      </p>
+                    ) : (
+                      <>
+                        <p className="text-sm font-medium text-foreground">
+                          You're no longer connected with {activePeerName}.
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Reconnect to keep sending messages — your history stays.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                  {!reconnectSent && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void reconnectToPeer()}
+                      className="shrink-0 gap-1.5"
+                    >
+                      <UserPlus className="h-3.5 w-3.5" />
+                      Connect again
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    void submit()
+                  }}
+                  className="flex items-center gap-2 border-t border-border/40 p-3"
                 >
-                  {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                </Button>
-              </form>
+                  <input
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    placeholder="Write a message…"
+                    maxLength={4000}
+                    autoFocus
+                    className="min-w-0 flex-1 rounded-xl border border-border/40 bg-card/40 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:outline-none"
+                  />
+                  <Button
+                    type="submit"
+                    size="icon"
+                    disabled={!draft.trim() || sending}
+                    className="shrink-0 rounded-xl"
+                    aria-label="Send"
+                  >
+                    {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  </Button>
+                </form>
+              )}
             </>
           )}
         </section>

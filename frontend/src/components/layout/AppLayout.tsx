@@ -12,7 +12,6 @@ import CategoryManagerDialog from "@/components/layout/category/CategoryManagerD
 import SavedPlacesPanel from "@/components/layout/savedPlace/SavedPlacesPanel"
 import AddCommentPanel from "@/components/comments/AddCommentPanel"
 import { CategoriesProvider } from "@/context/useCategories"
-import { Toaster } from "sonner"
 import { useMemo } from "react"
 
 function AppLayoutContent() {
@@ -48,15 +47,6 @@ function AppLayoutContent() {
       <SavedPlacesPanel />
       <AddCommentPanel />
       <CategoryManagerDialog />
-
-      <Toaster
-        position="top-right"
-        style={{ top: '4rem', right: '4rem', zIndex: 1000 }}
-        toastOptions={{
-          className: '!bg-card/95 !border !border-border/40 !text-foreground !shadow-xl !rounded-xl !backdrop-blur supports-[backdrop-filter]:!bg-card/90',
-          duration: 4000,
-        }}
-      />
     </div>
   )
 }

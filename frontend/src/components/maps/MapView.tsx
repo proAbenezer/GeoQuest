@@ -3,11 +3,15 @@ import Map from "react-map-gl/mapbox"
 import type * as mapboxgl from "mapbox-gl"
 import MapControllers from "@/components/maps/MapControllers"
 import { useRef, useState, useMemo, useEffect, useCallback } from "react"
+import { useSearchParams } from "react-router-dom"
 import PinsList from "@/components/pins/PinList"
 import PlacesLayers from "@/components/maps/PlacesLayers"
 import CommentRoutesLayer from "@/components/maps/CommentRoutesLayer"
+import PublicPinsLayer from "@/components/maps/PublicPinsLayer"
 import UnlockStatusBanner from "@/components/maps/UnlockStatusBanner"
 import { usePins } from "@/context/usePins"
+import { useAuth } from "@/context/AuthContext"
+import { usePublicPins } from "@/hooks/usePublicPins"
 import { usePanelManager } from "@/hooks/usePanelManager"
 import { useRecentlyVisited } from "@/hooks/useRecentlyVisited"
 import { useLocationTracking } from "@/hooks/useLocationTracking"
@@ -19,7 +23,11 @@ import { placesToGeoJson } from "@/lib/placesToGeoJson"
 import { reverseGeocodeClick } from "@/lib/reverseGeocode"
 import { osmNearestNamed, poiLabelAt } from "@/lib/poiFromClick"
 import TopCommentWidget from "@/components/comments/TopCommentWidget"
-import { Loader2, Route as RouteIcon } from "lucide-react"
+import CommentSection from "@/components/comments/CommentSection"
+import SidePanel from "@/components/layout/sidebar/SidePanel"
+import type { PublicPin } from "@/types/community"
+import { Loader2, MapPin, Route as RouteIcon, Globe2, MessageSquare, X } from "lucide-react"
+import { toast } from "sonner"
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 
@@ -76,7 +84,16 @@ export default function MapView() {
   const [zoom, setZoom] = useState(12)
   const [showCommentRoutes, setShowCommentRoutes] = useState(true)
   const [commentRouteCount, setCommentRouteCount] = useState(0)
+  const [showPublicPins, setShowPublicPins] = useState(false)
+  const [publicPinCount, setPublicPinCount] = useState(0)
+  // A public pin whose threaded comments are open in a side panel (opened from a
+  // read-only Friends'-pins marker popup). The feed only returns pins the
+  // viewer may comment on, so the panel can always write.
+  const [publicCommentPin, setPublicCommentPin] = useState<PublicPin | null>(null)
+  const { user } = useAuth()
   const {
+    pins,
+    loading: pinsLoading,
     flyToTarget,
     setFlyToTarget,
     setMapBounds,
@@ -91,6 +108,27 @@ export default function MapView() {
     openCommentView,
   } = usePins()
   const { openPreview } = usePanelManager()
+  // The friends'-pins feed. Owned here (single /pins/public poll) and passed to
+  // PublicPinsLayer for rendering, so a ?pin= deep-link can resolve a public pin
+  // even while the overlay is hidden.
+  const publicFeed = usePublicPins()
+  // True once the mapbox map has fired onLoad, so one-shot fly-tos requested
+  // before the canvas exists (e.g. a cold ?pin= deep-link) still land.
+  const [mapReady, setMapReady] = useState(false)
+
+  // One-shot ?pin=<id> deep-links (group place cards' "View on map", comment
+  // notifications): center the map on that pin and open its panel, then clear
+  // the query param. The id is resolved against my own pins first (any pin,
+  // public or private — the feed never includes self), then the friends' feed.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const pendingPinId = searchParams.get("pin")
+  const clearPendingPin = useCallback(() => {
+    const next = new URLSearchParams(searchParams)
+    if (next.has("pin")) {
+      next.delete("pin")
+      setSearchParams(next, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
   
   const { trackVisitedPlace } = useRecentlyVisited()
 
@@ -129,10 +167,13 @@ export default function MapView() {
 
   useEffect(() => {
     if (result?.unlocked && !result.alreadyUnlocked && result?.place) {
-      console.log('Place unlocked:', result.place.name)
       // Tell the exploration bar that persisted roll-up data changed, so it
       // re-reads it from the server (the server recomputes on write).
       bumpUnlockCount()
+      toast(`Unlocked ${result.place.name}`, {
+        icon: <MapPin className="h-5 w-5 text-primary" />,
+        description: "A new place is now part of your travels.",
+      })
     }
   }, [result, bumpUnlockCount])
 
@@ -155,11 +196,54 @@ export default function MapView() {
   }, [location, setGpsLocation])
 
   useEffect(() => {
-    if (!flyToTarget || !mapRef.current) return
+    if (!flyToTarget || !mapRef.current || !mapReady) return
     const map = mapRef.current.getMap()
     map.flyTo({ center: [flyToTarget.longitude, flyToTarget.latitude], zoom: 15, duration: 1200 })
     setFlyToTarget(null)
-  }, [flyToTarget, setFlyToTarget])
+  }, [flyToTarget, setFlyToTarget, mapReady])
+
+  // Resolve a ?pin= deep-link once its source is available (see pendingPinId).
+  useEffect(() => {
+    if (!pendingPinId) return
+    const own = pins.find((p) => p.id === pendingPinId)
+    if (own) {
+      // My own pin (public or private): open its detail panel exactly like a
+      // marker tap would.
+      setSecondaryPanel({ type: "pinDetail", pin: own })
+      setHighlightedPinId(own.id)
+      setFlyToTarget({ latitude: own.latitude, longitude: own.longitude })
+      clearPendingPin()
+      return
+    }
+    // Not one of mine (or my pins still loading) — the friends' feed may have it.
+    // Wait until BOTH sources have settled so a slow one never has its answer
+    // pre-empted by a premature clear.
+    if (pinsLoading || publicFeed.loading) return
+    const pub = publicFeed.pins.find((p) => p.id === pendingPinId)
+    if (pub) {
+      // Someone I follow/am connected to commented here — open its public
+      // comment thread (this is exactly the panel the overlay's Comments button
+      // opens) and drop the overlay toggle on so the marker is visible.
+      setSecondaryPanel(null)
+      setShowPublicPins(true)
+      setFlyToTarget({ latitude: pub.latitude, longitude: pub.longitude })
+      setPublicCommentPin(pub)
+    }
+    // Found-or-stale, clear the param — nothing left to wait on.
+    clearPendingPin()
+  }, [
+    pendingPinId,
+    pins,
+    pinsLoading,
+    publicFeed.pins,
+    publicFeed.loading,
+    setSecondaryPanel,
+    setHighlightedPinId,
+    setFlyToTarget,
+    setShowPublicPins,
+    setPublicCommentPin,
+    clearPendingPin,
+  ])
 
   const updateBounds = useCallback(() => {
     if (!mapRef.current) return
@@ -318,7 +402,10 @@ export default function MapView() {
         style={{ width: "100%", height: "100%" }}
         onZoom={(e) => setZoom(e.viewState.zoom)}
         onClick={handleMapClick}
-        onLoad={updateBounds}
+        onLoad={() => {
+          setMapReady(true)
+          updateBounds()
+        }}
         onMoveEnd={updateBounds}
       >
         {geojson && <PlacesLayers geojson={geojson} />}
@@ -326,6 +413,14 @@ export default function MapView() {
           visible={showCommentRoutes}
           zoom={zoom}
           onCountChange={setCommentRouteCount}
+        />
+        <PublicPinsLayer
+          visible={showPublicPins}
+          zoom={zoom}
+          pins={publicFeed.pins}
+          routePairs={publicFeed.routePairs}
+          onCountChange={setPublicPinCount}
+          onOpenComments={(pin) => setPublicCommentPin(pin)}
         />
         <MapControllers
           mapRef={mapRef}
@@ -379,7 +474,83 @@ export default function MapView() {
         </button>
       )}
 
+      {/* Friends'-pins toggle (logged-in users only, once their connections/
+          followers have public pins). Read-only overlay — markers open a popup
+          to the owner's profile or their public pin's comments. */}
+      {user && publicPinCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowPublicPins((v) => !v)}
+          aria-pressed={showPublicPins}
+          title={
+            showPublicPins
+              ? "Hide pins from your connections and followed travelers"
+              : "Show pins from your connections and followed travelers"
+          }
+          className={`
+            absolute bottom-20 left-3 z-30 flex items-center gap-2 rounded-full border px-3 py-2 shadow-xl backdrop-blur transition-colors
+            supports-[backdrop-filter]:bg-background/80
+            ${showPublicPins
+              ? "border-primary/40 bg-primary/15 text-primary hover:bg-primary/25"
+              : "border-border/60 bg-background/95 text-muted-foreground hover:bg-muted/40"
+            }
+          `}
+        >
+          <Globe2 className="h-4 w-4" />
+          <span className="text-xs font-semibold">Friends' pins</span>
+          <span
+            className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[#8B5CF6] px-1 text-[10px] font-bold leading-none text-white"
+            aria-label={`${publicPinCount} public pin${publicPinCount === 1 ? "" : "s"} from travelers you know`}
+          >
+            {publicPinCount > 9 ? "9+" : publicPinCount}
+          </span>
+        </button>
+      )}
+
       <TopCommentWidget />
+
+      {/* Threaded comments for a public pin opened from the Friends'-pins
+          overlay — mirrors the "View all" side panel of the route widget. */}
+      {publicCommentPin && (
+        <SidePanel widthClassName="w-[28rem]" onOpenChange={(open) => !open && setPublicCommentPin(null)}>
+          <div className="sticky top-0 z-10 border-b bg-card/50 backdrop-blur px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+            <div className="flex items-center justify-between">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#8B5CF6]/15 text-[#8B5CF6] shadow-sm">
+                  <MessageSquare className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <span className="block font-heading text-lg font-semibold tracking-tight">
+                    Public pin comments
+                  </span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {publicCommentPin.customName || publicCommentPin.name} · {publicCommentPin.owner.firstName}{" "}
+                    {publicCommentPin.owner.lastName}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setPublicCommentPin(null)}
+                className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                aria-label="Close comments"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+          <div className="px-3 py-4">
+            <CommentSection
+              key={publicCommentPin.id}
+              target={{
+                type: "pin",
+                pinId: publicCommentPin.id,
+                latitude: publicCommentPin.latitude,
+                longitude: publicCommentPin.longitude,
+              }}
+            />
+          </div>
+        </SidePanel>
+      )}
     </div>
   )
 }

@@ -1,6 +1,6 @@
 // components/comments/CommentSection.tsx
-import { useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useRef, useState, type ChangeEvent } from "react"
+import { Link, useNavigate } from "react-router-dom"
 import {
   MessageSquare,
   ThumbsUp,
@@ -9,9 +9,12 @@ import {
   CornerDownRight,
   Send,
   Loader2,
+  ImagePlus,
+  X,
 } from "lucide-react"
 import type { Comment, CommentTarget } from "@/types"
 import { useComments } from "@/hooks/useComments"
+import { useImageUpload } from "@/hooks/useImageUpload"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
@@ -35,30 +38,44 @@ export function initialsOf(c: Comment): string {
 }
 
 interface ComposerProps {
-  onSubmit: (body: string) => Promise<unknown>
+  onSubmit: (body: string, imageUrl?: string) => Promise<unknown>
   placeholder?: string
   buttonLabel?: string
   autoFocus?: boolean
+  // Route threads accept a photo; pin/location threads stay text-only.
+  allowPhoto?: boolean
 }
 
-function Composer({ onSubmit, placeholder = "Write a comment...", buttonLabel = "Post", autoFocus }: ComposerProps) {
+function Composer({ onSubmit, placeholder = "Write a comment...", buttonLabel = "Post", autoFocus, allowPhoto }: ComposerProps) {
   const [body, setBody] = useState("")
+  const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [posting, setPosting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const { uploadImage, uploading } = useImageUpload()
 
   async function handleSubmit() {
     const trimmed = body.trim()
-    if (!trimmed || posting) return
+    if (!trimmed || posting || uploading) return
     setPosting(true)
     setError(null)
     try {
-      await onSubmit(trimmed)
+      await onSubmit(trimmed, imageUrl ?? undefined)
       setBody("")
+      setImageUrl(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to post")
     } finally {
       setPosting(false)
     }
+  }
+
+  async function handlePhotoChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const url = await uploadImage(file)
+    if (url) setImageUrl(url)
+    e.target.value = "" // allow re-selecting the same file later
   }
 
   return (
@@ -76,9 +93,45 @@ function Composer({ onSubmit, placeholder = "Write a comment...", buttonLabel = 
           }
         }}
       />
+      {allowPhoto && (
+        <div className="flex items-center gap-2">
+          {imageUrl ? (
+            <div className="relative h-16 w-24 overflow-hidden rounded-md border">
+              <img src={imageUrl} alt="Route photo" className="h-full w-full object-cover" />
+              <button
+                type="button"
+                onClick={() => setImageUrl(null)}
+                className="absolute right-1 top-1 rounded-full bg-background/90 p-0.5 hover:bg-background"
+                aria-label="Remove photo"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ) : (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handlePhotoChange}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60"
+              >
+                {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}
+                {uploading ? "Uploading…" : "Add photo"}
+              </button>
+            </>
+          )}
+        </div>
+      )}
       {error && <p className="text-xs text-destructive">{error}</p>}
       <div className="flex justify-end">
-        <Button size="sm" onClick={handleSubmit} disabled={!body.trim() || posting} className="gap-1.5">
+        <Button size="sm" onClick={handleSubmit} disabled={!body.trim() || posting || uploading} className="gap-1.5">
           {posting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
           {buttonLabel}
         </Button>
@@ -174,15 +227,39 @@ function CommentItem({
     <div className={depth > 0 ? "ml-4 border-l border-border/40 pl-3 space-y-2" : "space-y-2"}>
       <div className="space-y-1.5">
         <div className="flex items-center gap-2">
-          <Avatar className="h-5 w-5 rounded-full">
-            <AvatarImage src={comment.author.profileImage || undefined} alt={comment.author.firstName} />
-            <AvatarFallback className="text-[9px] font-medium">{initialsOf(comment)}</AvatarFallback>
-          </Avatar>
-          <span className="text-xs font-medium">{`${comment.author.firstName} ${comment.author.lastName}`}</span>
+          <Link
+            to={`/users/${comment.author.id}`}
+            className="group flex min-w-0 items-center gap-2"
+            aria-label={`View ${comment.author.firstName} ${comment.author.lastName}'s profile`}
+          >
+            <Avatar className="h-5 w-5 rounded-full">
+              <AvatarImage src={comment.author.profileImage || undefined} alt={comment.author.firstName} />
+              <AvatarFallback className="text-[9px] font-medium">{initialsOf(comment)}</AvatarFallback>
+            </Avatar>
+            <span className="truncate text-xs font-medium group-hover:underline">
+              {`${comment.author.firstName} ${comment.author.lastName}`}
+            </span>
+          </Link>
           <span className="text-[10px] text-muted-foreground">{timeAgo(comment.createdAt)}</span>
         </div>
 
         <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{comment.body}</p>
+
+        {comment.imageUrl && (
+          <a
+            href={comment.imageUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="block max-w-md overflow-hidden rounded-lg border"
+            title="Open photo"
+          >
+            <img
+              src={comment.imageUrl}
+              alt={`Photo shared by ${comment.author.firstName}`}
+              className="max-h-64 w-full object-cover"
+            />
+          </a>
+        )}
 
         <div className="flex items-center gap-1.5">
           <VoteRow comment={comment} loggedIn={loggedIn} onVote={onVote} />
@@ -286,8 +363,11 @@ export default function CommentSection({ target }: { target: CommentTarget }) {
 
       {loggedIn ? (
         <Composer
-          onSubmit={(body) => addComment(body)}
-          placeholder="Add a comment..."
+          onSubmit={(body, imageUrl) => addComment(body, undefined, imageUrl)}
+          placeholder={
+            target.type === "route" ? "Post to this route — add a photo to show the way..." : "Add a comment..."
+          }
+          allowPhoto={target.type === "route"}
         />
       ) : (
         <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5">

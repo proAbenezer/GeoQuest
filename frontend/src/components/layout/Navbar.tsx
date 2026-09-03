@@ -25,6 +25,7 @@ import { usePins } from "@/context/usePins"
 import { useCategories } from "@/context/useCategories"
 import { usePanelManager } from "@/hooks/usePanelManager"
 import { useConversationUnread } from "@/hooks/useConversations"
+import { NotificationBell } from "@/components/notifications/NotificationBell"
 import { notifyLocked } from "@/lib/notify"
 import FilterPanel from "@/components/filter/FilterPanel"
 import { useSidebar } from "@/components/ui/sidebar" // ✅ added for mobile toggle
@@ -444,8 +445,9 @@ const Navbar = ({ visitedIso2 = new Set() }: NavbarProps) => {
         )}
       </div>
 
-      {/* Profile avatar */}
-      <div className="ml-auto">
+      {/* Notifications + Profile avatar */}
+      <div className="ml-auto flex items-center gap-2">
+        <NotificationBell />
         <DropdownMenu>
           <DropdownMenuTrigger
             nativeButton={false}
@@ -463,6 +465,12 @@ const Navbar = ({ visitedIso2 = new Set() }: NavbarProps) => {
             className="rounded-xl border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-lg"
           >
             <DropdownMenuItem
+              onClick={() => navigate("/profile")}
+              className="rounded-lg text-sm hover:bg-muted/40 transition-colors"
+            >
+              Profile
+            </DropdownMenuItem>
+            <DropdownMenuItem
               onClick={() => navigate("/messages")}
               className="flex w-full items-center justify-between gap-2 rounded-lg text-sm hover:bg-muted/40 transition-colors"
             >
@@ -472,12 +480,6 @@ const Navbar = ({ visitedIso2 = new Set() }: NavbarProps) => {
                   {unreadMessages}
                 </span>
               )}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => navigate("/profile")}
-              className="rounded-lg text-sm hover:bg-muted/40 transition-colors"
-            >
-              Profile
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => navigate("/stats")}

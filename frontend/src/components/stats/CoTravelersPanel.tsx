@@ -1,11 +1,14 @@
 // components/stats/CoTravelersPanel.tsx
 // "Travelers you've crossed paths with" — people who have unlocked at least one
 // place the current traveler has too, most places in common first. Each row can
-// Message or Connect (follow) directly. Placed on the stats dashboard after the
-// traveler-profile band; it reads its own data (GET /community/co-travelers) so
-// it stays independent of the materialized /stats summary.
-import { Link } from "react-router-dom"
-import { Users, Loader2, MapPin } from "lucide-react"
+// Message, Connect, or open their public profile. A "+ New group" action opens
+// the Messages group-creation page (/messages/new-group) pre-selecting the
+// co-travelers shown here; the actual group is built there (name, photo, linked
+// place, members) and lands you in its chat. Placed on the stats dashboard after
+// the traveler-profile band; it reads its own data (GET /community/co-travelers)
+// so it stays independent of the materialized /stats summary.
+import { useNavigate, Link } from "react-router-dom"
+import { Users, Loader2, MapPin, UserPlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { StatPanel } from "@/components/stats/StatPanel"
 import { PersonRow } from "@/components/community/PersonRow"
@@ -19,12 +22,22 @@ function subtitleFor(t: FellowTraveler): string {
   if (t.sharedPlaces > 0) {
     parts.push(`${t.sharedPlaces} place${t.sharedPlaces === 1 ? "" : "s"} in common`)
   }
-  if (t.followsMe) parts.push("follows you")
+  if (t.incomingPending) parts.push("wants to connect")
   return parts.join(" · ")
 }
 
 export default function CoTravelersPanel() {
   const { travelers, loading } = useCoTravelers()
+  const navigate = useNavigate()
+
+  const openNewGroup = () => {
+    // Pre-select the co-travelers shown here so "start a trip together" is one
+    // tap away; anyone can be removed on the next screen.
+    navigate("/messages/new-group", {
+      state: { travelers: travelers.slice(0, MAX_VISIBLE) },
+    })
+  }
+
   const shown = travelers.slice(0, MAX_VISIBLE)
 
   return (
@@ -37,14 +50,20 @@ export default function CoTravelersPanel() {
           : "People who've been to the same places as you"
       }
       action={
-        travelers.length > MAX_VISIBLE ? (
-          <Link
-            to="/messages"
-            className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary/80"
-          >
-            View all in Messages →
-          </Link>
-        ) : undefined
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          {travelers.length > MAX_VISIBLE && (
+            <Link
+              to="/messages"
+              className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary/80"
+            >
+              View all in Messages →
+            </Link>
+          )}
+          <Button size="sm" variant="outline" onClick={openNewGroup} className="gap-1.5">
+            <UserPlus className="h-3.5 w-3.5" />
+            New group
+          </Button>
+        </div>
       }
     >
       {loading && travelers.length === 0 ? (
@@ -75,6 +94,8 @@ export default function CoTravelersPanel() {
                 username={t.username}
                 profileImage={t.profileImage}
                 connected={t.connected}
+                incomingPending={t.incomingPending}
+                outgoingPending={t.outgoingPending}
                 subtitle={subtitleFor(t)}
               />
             ))}

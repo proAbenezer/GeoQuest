@@ -1,10 +1,10 @@
 // routes/pins.ts
 import { Router } from "express"
 import { z } from "zod"
-import { eq, and, inArray, desc } from "drizzle-orm"
+import { eq, and, inArray, desc, sql } from "drizzle-orm"
 import { alias } from "drizzle-orm/pg-core"
 import { db } from "../db/index.ts"
-import { pins, users, comments } from "../db/schema.ts"
+import { pins, users, comments, groups, groupMembers } from "../db/schema.ts"
 import { optionalAuth } from "../middleware/auth.ts"
 import { ensureGuestSession } from "../middleware/guest.ts"
 import { contentAudienceFor } from "./community.ts"
@@ -45,6 +45,35 @@ router.use(optionalAuth, ensureGuestSession)
 function ownerFilter(req: { userId?: string; guestId?: string }) {
   if (req.userId) return eq(pins.userId, req.userId)
   return eq(pins.guestId, req.guestId!)
+}
+
+// Shared projection for the public feed: a public pin plus its owner's profile.
+// Used by the audience overlay and the group-linked-place additions so both
+// come back in the same shape (a row renders as { ...pin, owner }).
+const PUBLIC_FEED_COLS = {
+  pin: {
+    id: pins.id,
+    name: pins.name,
+    customName: pins.customName,
+    description: pins.description,
+    latitude: pins.latitude,
+    longitude: pins.longitude,
+    categoryId: pins.categoryId,
+    placeId: pins.placeId,
+    visitDate: pins.visitDate,
+    imageUrl: pins.imageUrl,
+    icons: pins.icons,
+    saved: pins.saved,
+    visibility: pins.visibility,
+    createdAt: pins.createdAt,
+  },
+  owner: {
+    userId: users.id,
+    firstName: users.firstName,
+    lastName: users.lastName,
+    username: users.username,
+    profileImage: users.profileImage,
+  },
 }
 
 router.get("/", async (req, res) => {
@@ -91,31 +120,7 @@ router.get("/public", async (req, res) => {
     const endPin = alias(pins, "end_pin")
 
     const rows = await db
-      .select({
-        pin: {
-          id: pins.id,
-          name: pins.name,
-          customName: pins.customName,
-          description: pins.description,
-          latitude: pins.latitude,
-          longitude: pins.longitude,
-          categoryId: pins.categoryId,
-          placeId: pins.placeId,
-          visitDate: pins.visitDate,
-          imageUrl: pins.imageUrl,
-          icons: pins.icons,
-          saved: pins.saved,
-          visibility: pins.visibility,
-          createdAt: pins.createdAt,
-        },
-        owner: {
-          userId: users.id,
-          firstName: users.firstName,
-          lastName: users.lastName,
-          username: users.username,
-          profileImage: users.profileImage,
-        },
-      })
+      .select(PUBLIC_FEED_COLS)
       .from(pins)
       .innerJoin(users, eq(pins.userId, users.id))
       .where(and(eq(pins.visibility, "public"), inArray(pins.userId, scope)))
@@ -150,12 +155,49 @@ router.get("/public", async (req, res) => {
         )
     }
 
-    res.json({ pins: rows.map((r) => ({ ...r.pin, owner: r.owner })), routePairs })
+    // Group-linked public pins — the "place" a group is linked to. Members are
+    // often direct-added and don't follow the creator, but the linked place is
+    // meant to be shared inside the group, so it joins the overlay for any
+    // member. Only on the unfiltered feed (an ownerId gallery stays scoped to
+    // that owner). Route pairs above stay derived from the audience feed only.
+    let groupExtra: ReturnType<typeof feedDto>[] = []
+    if (!ownerId) {
+      const membershipPins = await db
+        .select({ pinId: groups.pinId })
+        .from(groupMembers)
+        .innerJoin(groups, eq(groupMembers.groupId, groups.id))
+        .where(and(eq(groupMembers.userId, me), sql`${groups.pinId} is not null`))
+      const linkedIds = Array.from(
+        new Set(membershipPins.map((r) => r.pinId).filter((v): v is string => Boolean(v)))
+      )
+      if (linkedIds.length > 0) {
+        const groupPinRows = await db
+          .select(PUBLIC_FEED_COLS)
+          .from(pins)
+          .innerJoin(users, eq(pins.userId, users.id))
+          .where(and(eq(pins.visibility, "public"), inArray(pins.id, linkedIds)))
+          .orderBy(desc(pins.createdAt))
+        groupExtra = groupPinRows.map(feedDto)
+      }
+    }
+
+    const seen = new Set<string>()
+    const feed = [...rows.map(feedDto), ...groupExtra].filter((p) => {
+      if (seen.has(p.id)) return false
+      seen.add(p.id)
+      return true
+    })
+
+    res.json({ pins: feed, routePairs })
   } catch (err) {
     console.error("Failed to load public pins:", err)
     res.status(500).json({ error: "Failed to load public pins" })
   }
 })
+
+function feedDto(r: { pin: { id: string }; owner: unknown }) {
+  return { ...r.pin, owner: r.owner }
+}
 
 router.post("/", async (req, res) => {
   const parsed = pinSchema.safeParse(req.body)

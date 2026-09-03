@@ -171,6 +171,13 @@ export default function TopCommentWidget() {
               <span className="ml-auto text-[10px] text-muted-foreground">{timeAgo(comment.createdAt)}</span>
             </div>
             <p className="mt-1.5 line-clamp-2 text-sm leading-snug text-foreground/90">{comment.body}</p>
+            {comment.imageUrl && (
+              <img
+                src={comment.imageUrl}
+                alt="Route photo"
+                className="mt-1.5 h-20 w-full rounded-md border object-cover"
+              />
+            )}
           </button>
 
           {/* Footer — votes + Next stepping (same location only) */}

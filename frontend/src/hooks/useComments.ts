@@ -44,11 +44,12 @@ export function useComments(target: CommentTarget | null) {
     refresh()
   }, [refresh])
 
-  async function addComment(body: string, parentId?: string): Promise<Comment> {
+  async function addComment(body: string, parentId?: string, imageUrl?: string): Promise<Comment> {
     const payload: Record<string, unknown> = {
       body,
       targetType: target?.type,
     }
+    if (imageUrl) payload.imageUrl = imageUrl
     if (parentId) {
       payload.parentId = parentId
     } else {

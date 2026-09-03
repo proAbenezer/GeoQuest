@@ -17,10 +17,12 @@ import {
   FileText,
   Globe,
   Compass,
-  Calendar
+  Calendar,
+  Lock,
 } from "lucide-react"
 import { usePins } from "@/context/usePins"
 import { useCategories } from "@/context/useCategories"
+import { useAuth } from "@/context/AuthContext"
 import { getCategoryIcon, getIconList } from "@/lib/categoryDisplay"
 import { Button } from "@/components/ui/button"
 import { IconStack } from "@/components/ui/icon-stack"
@@ -59,6 +61,7 @@ const PinDetailPanel = () => {
     pins,
   } = usePins()
   const { categories } = useCategories()
+  const { user } = useAuth()
   const { uploadImage, error: uploadError } = useImageUpload()
 
   // State for edit mode
@@ -106,6 +109,19 @@ const PinDetailPanel = () => {
     setDeleting(false)
     setEditError(null)
   }, [pin?.id])
+
+  // Flip a pin between public (connections + followers can see & comment) and
+  // private (owner-only). Only surfaced for a logged-in owner — the server
+  // forces guest pins private, so a guest's toggle would be meaningless.
+  async function toggleVisibility() {
+    if (!pin) return
+    const next = pin.visibility === "public" ? "private" : "public"
+    try {
+      await updatePin(pin.id, { visibility: next })
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Failed to update pin")
+    }
+  }
 
   // Fetch weather
   useEffect(() => {
@@ -281,9 +297,6 @@ const PinDetailPanel = () => {
           <div className="min-w-0">
             {isPinDetail ? (
               <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-sm shrink-0">
-                  <MapPin className="h-4 w-4" />
-                </div>
                 <div>
                   <h2 className="text-lg font-semibold truncate leading-tight">
                     {pin!.customName || pin!.name}
@@ -291,13 +304,38 @@ const PinDetailPanel = () => {
                   {pin!.customName && (
                     <p className="text-sm text-muted-foreground truncate">{pin!.name}</p>
                   )}
+                  {user && !isEditing && !confirmingDelete && (
+                    <button
+                      type="button"
+                      onClick={toggleVisibility}
+                      className={`mt-1.5 inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors ${
+                        pin!.visibility === "public"
+                          ? "border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
+                          : "border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted"
+                      }`}
+                      title={
+                        pin!.visibility === "public"
+                          ? "Public — your connections and followers can see and comment. Tap to make private."
+                          : "Private — only you can see this. Tap to share with connections and followers."
+                      }
+                    >
+                      {pin!.visibility === "public" ? (
+                        <>
+                          <Globe className="h-3 w-3" />
+                          Public · tap to make private
+                        </>
+                      ) : (
+                        <>
+                          <Lock className="h-3 w-3" />
+                          Private · tap to share
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
               </div>
             ) : (
               <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-sm shrink-0">
-                  <MapPin className="h-4 w-4" />
-                </div>
                 <h2 className="text-lg font-semibold truncate leading-tight">
                   {pin!.name}
                 </h2>

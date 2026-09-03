@@ -36,6 +36,7 @@ import {
   groupMembers,
   groupMessages,
   notifications,
+  pins,
 } from "../db/schema.ts"
 import { requireAuth } from "../middleware/auth.ts"
 import { notify } from "../lib/notify.ts"
@@ -152,6 +153,36 @@ async function lastMessageOf(gid: string) {
   return rows.length ? toGroupMessage(rows[0]) : null
 }
 
+// A group's linked place as a slim card for the chat header. Only shown when
+// the pin still exists AND is public OR belongs to the viewer (the creator) —
+// a pin flipped back to private disappears for everyone else.
+async function linkedPinOf(pinId: string | null, viewerId: string) {
+  if (!pinId) return null
+  const [p] = await db
+    .select({
+      id: pins.id,
+      name: pins.name,
+      customName: pins.customName,
+      imageUrl: pins.imageUrl,
+      latitude: pins.latitude,
+      longitude: pins.longitude,
+      userId: pins.userId,
+      visibility: pins.visibility,
+    })
+    .from(pins)
+    .where(eq(pins.id, pinId))
+    .limit(1)
+  if (!p) return null
+  if (p.visibility !== "public" && p.userId !== viewerId) return null
+  return {
+    id: p.id,
+    name: p.customName || p.name,
+    imageUrl: p.imageUrl,
+    latitude: p.latitude,
+    longitude: p.longitude,
+  }
+}
+
 // ---- Create ----
 router.post("/", requireAuth, async (req, res) => {
   try {
@@ -161,6 +192,37 @@ router.post("/", requireAuth, async (req, res) => {
     ).slice(0, NAME_MAX)
     if (!name) {
       return res.status(400).json({ error: "Group name is required" })
+    }
+
+    // Optional group profile picture (same URL shape as pin photos).
+    const imageUrl =
+      typeof req.body?.imageUrl === "string" && req.body.imageUrl.trim()
+        ? req.body.imageUrl.trim()
+        : null
+    if (imageUrl && !/^https?:\/\//.test(imageUrl)) {
+      return res.status(400).json({ error: "Invalid group photo URL" })
+    }
+
+    // Optional linked place — the creator's own PUBLIC pin. A group is added
+    // directly (members may not follow the creator), so the pin has to be
+    // public for the link to be meaningful to members.
+    let pinId: string | null = null
+    if (req.body?.pinId) {
+      if (typeof req.body.pinId !== "string" || !UUID_RE.test(req.body.pinId)) {
+        return res.status(400).json({ error: "Invalid pin id" })
+      }
+      const [pin] = await db
+        .select({ userId: pins.userId, visibility: pins.visibility })
+        .from(pins)
+        .where(eq(pins.id, req.body.pinId))
+        .limit(1)
+      if (!pin) return res.status(400).json({ error: "Pin not found" })
+      if (pin.userId !== me || pin.visibility !== "public") {
+        return res.status(400).json({
+          error: "Only public pins of yours can be linked to a group",
+        })
+      }
+      pinId = req.body.pinId
     }
 
     const rawIds = Array.isArray(req.body?.memberUserIds) ? req.body.memberUserIds : []
@@ -185,10 +247,11 @@ router.post("/", requireAuth, async (req, res) => {
 
     const [created] = await db
       .insert(groups)
-      .values({ name, createdByUserId: me })
+      .values({ name, createdByUserId: me, imageUrl, pinId })
       .returning({
         id: groups.id,
         name: groups.name,
+        imageUrl: groups.imageUrl,
         createdAt: groups.createdAt,
         updatedAt: groups.updatedAt,
       })
@@ -219,6 +282,7 @@ router.post("/", requireAuth, async (req, res) => {
       group: {
         id: gid,
         name,
+        imageUrl: created.imageUrl,
         createdAt: created.createdAt,
         updatedAt: created.updatedAt,
         mine: true,
@@ -248,6 +312,7 @@ router.get("/", requireAuth, async (req, res) => {
         .select({
           id: groups.id,
           name: groups.name,
+          imageUrl: groups.imageUrl,
           createdByUserId: groups.createdByUserId,
           updatedAt: groups.updatedAt,
         })
@@ -292,6 +357,7 @@ router.get("/", requireAuth, async (req, res) => {
         return {
           id: g.id,
           name: g.name,
+          imageUrl: g.imageUrl,
           createdBy: creatorById.get(g.createdByUserId) ?? null,
           mine: g.createdByUserId === me,
           memberCount: memberCounts.get(g.id) ?? 0,
@@ -306,6 +372,102 @@ router.get("/", requireAuth, async (req, res) => {
   } catch (err) {
     console.error("Failed to list groups:", err)
     res.status(500).json({ error: "Failed to list groups" })
+  }
+})
+
+// ---- Update group profile (creator: name, photo, linked place) ----
+// Accepts any subset of { name, imageUrl, pinId }. Explicit null clears the
+// photo/linked place; pinId (when set) must be the creator's own PUBLIC pin.
+router.patch("/:id", requireAuth, async (req, res) => {
+  try {
+    const me = req.userId!
+    const gid = paramStr(req.params.id)
+    if (!gid || !UUID_RE.test(gid)) {
+      return res.status(400).json({ error: "Invalid group id" })
+    }
+    const [grp] = await db
+      .select({ createdByUserId: groups.createdByUserId })
+      .from(groups)
+      .where(eq(groups.id, gid))
+      .limit(1)
+    if (!grp) return res.status(404).json({ error: "Group not found" })
+    if (grp.createdByUserId !== me) {
+      return res.status(403).json({ error: "Only the group creator can edit the group" })
+    }
+
+    const patch: Partial<typeof groups.$inferInsert> = {}
+    if (typeof req.body?.name === "string") {
+      const name = req.body.name.trim().slice(0, NAME_MAX)
+      if (!name) return res.status(400).json({ error: "Group name can't be empty" })
+      patch.name = name
+    }
+    if ("imageUrl" in (req.body ?? {})) {
+      const imageUrl =
+        req.body.imageUrl === null || req.body.imageUrl === ""
+          ? null
+          : typeof req.body.imageUrl === "string"
+            ? req.body.imageUrl.trim()
+            : null
+      if (imageUrl && !/^https?:\/\//.test(imageUrl)) {
+        return res.status(400).json({ error: "Invalid group photo URL" })
+      }
+      patch.imageUrl = imageUrl
+    }
+    if ("pinId" in (req.body ?? {})) {
+      if (req.body.pinId === null || req.body.pinId === "") {
+        patch.pinId = null
+      } else {
+        const rawPin = req.body.pinId
+        if (typeof rawPin !== "string" || !UUID_RE.test(rawPin)) {
+          return res.status(400).json({ error: "Invalid pin id" })
+        }
+        const [pin] = await db
+          .select({ userId: pins.userId, visibility: pins.visibility })
+          .from(pins)
+          .where(eq(pins.id, rawPin))
+          .limit(1)
+        if (!pin) return res.status(400).json({ error: "Pin not found" })
+        if (pin.userId !== me || pin.visibility !== "public") {
+          return res.status(400).json({
+            error: "Only public pins of yours can be linked to a group",
+          })
+        }
+        patch.pinId = rawPin
+      }
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return res.status(400).json({ error: "Nothing to update" })
+    }
+    patch.updatedAt = new Date()
+
+    const [updated] = await db
+      .update(groups)
+      .set(patch)
+      .where(eq(groups.id, gid))
+      .returning({
+        id: groups.id,
+        name: groups.name,
+        imageUrl: groups.imageUrl,
+        pinId: groups.pinId,
+        createdAt: groups.createdAt,
+        updatedAt: groups.updatedAt,
+      })
+
+    res.json({
+      group: {
+        id: updated.id,
+        name: updated.name,
+        imageUrl: updated.imageUrl,
+        createdAt: updated.createdAt,
+        updatedAt: updated.updatedAt,
+        mine: true,
+      },
+      pin: await linkedPinOf(updated.pinId, me),
+    })
+  } catch (err) {
+    console.error("Failed to update group:", err)
+    res.status(500).json({ error: "Failed to update group" })
   }
 })
 
@@ -326,6 +488,8 @@ router.get("/:id/messages", requireAuth, async (req, res) => {
         .select({
           id: groups.id,
           name: groups.name,
+          imageUrl: groups.imageUrl,
+          pinId: groups.pinId,
           createdByUserId: groups.createdByUserId,
           updatedAt: groups.updatedAt,
         })
@@ -337,7 +501,8 @@ router.get("/:id/messages", requireAuth, async (req, res) => {
         .from(groupMembers)
         .where(eq(groupMembers.groupId, gid)),
     ])
-    if (!grp) return res.status(404).json({ error: "Group not found" })
+    if (grp.length === 0) return res.status(404).json({ error: "Group not found" })
+    const groupRow = grp[0]
 
     // ?after=<ISO> polls only messages newer than the cursor (the open chat's
     // 5s tick); a full open (no after) fetches the newest 200, ascending.
@@ -357,7 +522,7 @@ router.get("/:id/messages", requireAuth, async (req, res) => {
           profileImage: users.profileImage,
         })
         .from(users)
-        .where(eq(users.id, grp.createdByUserId))
+        .where(eq(users.id, groupRow.createdByUserId))
         .limit(1),
       db
         .select({
@@ -377,14 +542,16 @@ router.get("/:id/messages", requireAuth, async (req, res) => {
     // above), so the client can append them directly.
     res.json({
       group: {
-        id: grp.id,
-        name: grp.name,
+        id: groupRow.id,
+        name: groupRow.name,
+        imageUrl: groupRow.imageUrl,
         createdBy: creatorRows.length ? profileOf(creatorRows[0]) : null,
-        createdByUserId: grp.createdByUserId,
-        mine: grp.createdByUserId === me,
+        createdByUserId: groupRow.createdByUserId,
+        mine: groupRow.createdByUserId === me,
         memberCount: memberCountRows[0]?.n ?? 0,
-        updatedAt: grp.updatedAt,
+        updatedAt: groupRow.updatedAt,
       },
+      pin: await linkedPinOf(groupRow.pinId, me),
       members: memberRows.map((r) => profileOf(r)),
       messages: msgRows,
     })

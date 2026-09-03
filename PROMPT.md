@@ -14,3 +14,8 @@ no the fix you made was wrong I want the exploration to work in such a way where
   fully visibel parent of the kotebe which in this case addis abab if I zoomed out enought and the enitre ethiopia visible now
   the fullly visible of my curretn lcoation kotebe is ethiopia so the exploration show ethiopia or another example if I were in
   abosto shashmene the immediate parent for absoute could be idk 010 so the exploration calucation show that if shahsmen full then shashemen is the curent exploration but if the region contining shashement is visivllie fully then the region become the full exploation calucation so yo get the idea this examples from top of my ahead not acutal percisice location 
+
+
+-I also want to have type of pins and routes which are public pins and private pins this way if a person make a pin and makes it a public pin and the other person is connect or following(following means they want to get all the pins and routes from this person but they don't want to be friends) with this the public pin can be commit on 
+-and also in the co-traverl section people should be able to create a group where they could chat(like telegram groups)
+-plus users should be able to see each other profile 

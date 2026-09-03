@@ -245,6 +245,12 @@ export const groups = pgTable("groups", {
   createdByUserId: uuid("created_by_user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
+  // Group "profile": an avatar photo shown wherever the group is listed.
+  imageUrl: text("image_url"),
+  // Optional linked place — a public pin of the creator the group is about.
+  // Members see it on the chat header and the map. ON DELETE SET NULL: if the
+  // pin is deleted the group just stops referencing it.
+  pinId: uuid("pin_id").references(() => pins.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 })
@@ -326,6 +332,11 @@ export const recentlyVisited = pgTable(
 export const comments = pgTable("comments", {
   id: uuid("id").primaryKey().defaultRandom(),
   body: text("body").notNull(),
+  // Optional photo on a route post: a route isn't its own table — it's the
+  // comment thread over a start→end pin pair — so the photo rides the comment
+  // that starts the route conversation. Pins keep their own image_url; this
+  // column only ever gets set for route-target comments.
+  imageUrl: text("image_url"),
   parentId: uuid("parent_id").references((): AnyPgColumn => comments.id, {
     onDelete: "cascade",
   }),
@@ -480,6 +491,7 @@ export const notifications = pgTable(
         "connection_request",
         "connection_accepted",
         "comment_vote",
+        "comment",
         "place_unlock",
         "message",
         "follow",
