@@ -11,6 +11,8 @@ import userRouter from "./routes/user.ts"
 import commentsRouter from "./routes/comments.ts"
 import statsRouter from "./routes/stats.ts"
 import communityRouter from "./routes/community.ts"
+import groupsRouter from "./routes/groups.ts"
+import notificationsRouter from "./routes/notifications.ts"
 import { tieredLimiter } from "./middleware/rateLimit.ts"
 
 const app = express()
@@ -71,5 +73,7 @@ app.use("/user", userRouter)
 app.use("/comments", commentsRouter)
 app.use("/stats", statsRouter)
 app.use("/community", communityRouter)
+app.use("/groups", groupsRouter)
+app.use("/notifications", notificationsRouter)
 
 export default app

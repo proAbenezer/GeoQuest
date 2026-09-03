@@ -36,7 +36,7 @@ const router = Router()
 router.use(optionalAuth)
 router.use(ensureGuestSession)
 
-type Owner = { userId?: string; guestId?: string }
+export type Owner = { userId?: string; guestId?: string }
 
 function travelStatsFilter(owner: Owner) {
   if (owner.userId) return eq(travelStats.userId, owner.userId)
@@ -147,6 +147,48 @@ async function backfillTravelStats(owner: Owner) {
     await db.insert(travelStats).values(values).onConflictDoNothing()
   }
   return db.select().from(travelStats).where(travelStatsFilter(owner))
+}
+
+// Lightweight travel KPIs for ONE identity — the top-line numbers the dashboard
+// shows (countries, total places, global distinct days, streak). Used by both
+// the owner's own /stats (via its inline fold) and the PUBLIC profile route
+// (user.ts GET /user/:userId), so a viewer sees exactly what the owner sees.
+// Backfills a legacy identity lazily, exactly like GET /stats.
+export async function travelSummary(owner: Owner) {
+  let rows = await db.select().from(travelStats).where(travelStatsFilter(owner))
+  if (rows.length === 0) {
+    rows = await backfillTravelStats(owner)
+  }
+  const globalDays = new Set<number>()
+  let totalPlaces = 0
+  let firstVisitAt: Date | null = null
+  let lastVisitAt: Date | null = null
+  let bestStreak = 0
+  let bestStreakName: string | null = null
+  for (const r of rows) {
+    for (const d of r.days) globalDays.add(d)
+    totalPlaces += r.placesCount
+    if (r.firstVisitAt && (!firstVisitAt || r.firstVisitAt < firstVisitAt)) {
+      firstVisitAt = r.firstVisitAt
+    }
+    if (r.lastVisitAt && (!lastVisitAt || r.lastVisitAt > lastVisitAt)) {
+      lastVisitAt = r.lastVisitAt
+    }
+    const streak = longestStreak(r.days)
+    if (streak > bestStreak) {
+      bestStreak = streak
+      bestStreakName = r.countryName
+    }
+  }
+  return {
+    countriesVisited: rows.length,
+    totalPlaces,
+    totalDays: globalDays.size,
+    firstVisitAt,
+    lastVisitAt,
+    longestStreakDays: bestStreak,
+    streakCountry: bestStreakName,
+  }
 }
 
 router.get("/", async (req, res) => {

@@ -175,27 +175,117 @@ export const travelStats = pgTable(
 )
 
 // --- PINS ---
-export const pins = pgTable("pins", {
+export const pins = pgTable(
+  "pins",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+    guestId: uuid("guest_id").references(() => guests.id, { onDelete: "cascade" }),
+    categoryId: uuid("category_id").references(() => categories.id, { onDelete: "set null" }),
+    placeId: uuid("place_id").references(() => places.id, { onDelete: "set null" }),
+    name: text("name").notNull(),
+    customName: text("custom_name"),
+    description: text("description").notNull(),
+    customDescription: text("custom_description"),
+    notes: text("notes"),
+    visitDate: date("visit_date"),
+    visited: boolean("visited").notNull().default(false),
+    latitude: doublePrecision("latitude").notNull(),
+    longitude: doublePrecision("longitude").notNull(),
+    imageUrl: text("image_url"),
+    saved: boolean("saved").default(false),
+    icons: text("icons").array().notNull().default(sql`'{}'::text[]`),
+    // Community visibility: 'public' pins/routes can be seen + commented by the
+    // owner's connections and followers only; 'private' stays owner-only.
+    visibility: text("visibility", { enum: ["public", "private"] })
+      .notNull()
+      .default("private"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // The public feed (GET /pins/public) scans public pins by owner.
+    ownerPublicIdx: index("pins_owner_public_idx")
+      .on(table.userId)
+      .where(sql`${table.visibility} = 'public'`),
+  })
+)
+
+// --- FOLLOWS (one-way subscription between registered users) ---
+// A row means `followerId` follows `followeeId` to see their public pins/routes.
+// Unlike connections there is no request/accept: following is instant and
+// unilateral (Instagram-style). Connections stay the stronger, reciprocal
+// "friends" relation; follow is how anyone subscribes to someone's public content.
+export const follows = pgTable(
+  "follows",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    followerId: uuid("follower_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    followeeId: uuid("followee_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqueFollow: uniqueIndex("unique_follow").on(table.followerId, table.followeeId),
+    // "Who follows me" lookups (follower counts, follower lists).
+    followeeIdx: index("follows_followee_idx").on(table.followeeId),
+  })
+)
+
+// --- COMMUNITY GROUPS (Telegram-style chat between registered users) ---
+// A group is created by one user (createdByUserId); membership is direct-add
+// (no accept) — anyone the creator adds becomes a member and can leave whenever.
+// Unread tracking per member mirrors conversationParticipants.lastReadAt.
+export const groups = pgTable("groups", {
   id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
-  guestId: uuid("guest_id").references(() => guests.id, { onDelete: "cascade" }),
-  categoryId: uuid("category_id").references(() => categories.id, { onDelete: "set null" }),
-  placeId: uuid("place_id").references(() => places.id, { onDelete: "set null" }),
   name: text("name").notNull(),
-  customName: text("custom_name"),
-  description: text("description").notNull(),
-  customDescription: text("custom_description"),
-  notes: text("notes"),
-  visitDate: date("visit_date"),
-  visited: boolean("visited").notNull().default(false),
-  latitude: doublePrecision("latitude").notNull(),
-  longitude: doublePrecision("longitude").notNull(),
-  imageUrl: text("image_url"),
-  saved: boolean("saved").default(false),
-  icons: text("icons").array().notNull().default(sql`'{}'::text[]`),
+  createdByUserId: uuid("created_by_user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 })
+
+export const groupMembers = pgTable(
+  "group_members",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    groupId: uuid("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    lastReadAt: timestamp("last_read_at"),
+    joinedAt: timestamp("joined_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqueGroupMember: uniqueIndex("unique_group_member").on(table.groupId, table.userId),
+    // "Which groups am I in" lookups (the inbox list).
+    memberUserIdIdx: index("group_members_user_idx").on(table.userId),
+  })
+)
+
+export const groupMessages = pgTable(
+  "group_messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    groupId: uuid("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    authorUserId: uuid("author_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    groupMessageIdx: index("group_message_idx").on(table.groupId, table.createdAt),
+  })
+)
 
 // --- RECENTLY VISITED ---
 export const recentlyVisited = pgTable(
@@ -331,12 +421,15 @@ export const messages = pgTable(
   })
 )
 
-// --- CONNECTIONS (1:1 follows between registered users) ---
-// A row means `followerId` follows `followeeId`. Follows are one-way by design —
-// there is no accept step; a "mutual" follow is just two rows pointing at each
-// other. They power co-traveler discovery ("Connect" with someone who visited a
-// place you've been to) and the Messages → People tab. The unique index keeps
-// follows idempotent (POST can rely on onConflictDoNothing).
+// --- CONNECTIONS (request/accept "friendship" between registered users) ---
+// A row means `followerId` has a connection toward `followeeId`. A friendship is
+// two symmetric rows pointing at each other, both `status = 'accepted'`; a
+// single `pending` row is an open request that the other user accepts (mirror
+// inserted) or declines (row deleted). Legacy one-way accepted rows are mirrored
+// by a boot-time backfill so every accepted connection is symmetric — which is
+// what makes the mutual-message gate (both directions accepted) trivial to
+// compute and lets the People tab mean "my friends". The unique index keeps the
+// two directions independently idempotent.
 export const connections = pgTable(
   "connections",
   {
@@ -347,12 +440,71 @@ export const connections = pgTable(
     followeeId: uuid("followee_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    status: text("status", { enum: ["pending", "accepted"] })
+      .notNull()
+      .default("accepted"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
     uniqueConnection: uniqueIndex("unique_connection").on(
       table.followerId,
       table.followeeId
+    ),
+    // Incoming-request lookups (who has a pending row to me) filter on followee
+    // + status — partial index keeps them cheap as the graph grows.
+    incomingPendingIdx: index("connections_incoming_pending_idx")
+      .on(table.followeeId)
+      .where(sql`${table.status} = 'pending'`),
+  })
+)
+
+// --- NOTIFICATIONS (in-app events for registered users) ---
+// One row per event worth surfacing: a connection request/accepted, an up/down
+// vote on your comment, a place a connection unlocked, a new 1:1 message. The
+// denormalized `context` carries the snippet shown in the popup (place name,
+// trimmed comment body, …) so the feed renders without joins. Guests are never
+// recipients (every event targets a registered user); actorUserId is null for
+// system-ish events, though none today are.
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    recipientUserId: uuid("recipient_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    actorUserId: uuid("actor_user_id").references(() => users.id, {
+      onDelete: "cascade",
+    }),
+    type: text("type", {
+      enum: [
+        "connection_request",
+        "connection_accepted",
+        "comment_vote",
+        "place_unlock",
+        "message",
+        "follow",
+        "group_added",
+        "group_message",
+      ],
+    }).notNull(),
+    // Comment id | place id | conversation id — the target of the event.
+    refId: uuid("ref_id"),
+    context: text("context"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    readAt: timestamp("read_at"), // null = unread
+  },
+  (table) => ({
+    // The inbox/poller reads a single recipient's feed newest-first.
+    recipientFeedIdx: index("notifications_recipient_feed_idx").on(
+      table.recipientUserId,
+      table.createdAt
+    ),
+    // Anti-burst dedup guard for unlock notifications (≤1 per actor→recipient
+    // per 15 min) — one indexed lookup on (actor, recipient, type).
+    actorRecipientTypeIdx: index("notifications_actor_recipient_type_idx").on(
+      table.actorUserId,
+      table.recipientUserId,
+      table.type
     ),
   })
 )
@@ -411,6 +563,30 @@ export const usersRelations = relations(users, ({ many }) => ({
   recentlyVisited: many(recentlyVisited),
   comments: many(comments),
   commentVotes: many(commentVotes),
+  receivedNotifications: many(notifications, {
+    relationName: "notifications_recipient",
+  }),
+  sentNotifications: many(notifications, {
+    relationName: "notifications_actor",
+  }),
+  following: many(follows, { relationName: "follows_follower" }),
+  followers: many(follows, { relationName: "follows_followee" }),
+  groupsCreated: many(groups),
+  groupMemberships: many(groupMembers),
+  groupMessages: many(groupMessages),
+}))
+
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  recipient: one(users, {
+    fields: [notifications.recipientUserId],
+    references: [users.id],
+    relationName: "notifications_recipient",
+  }),
+  actor: one(users, {
+    fields: [notifications.actorUserId],
+    references: [users.id],
+    relationName: "notifications_actor",
+  }),
 }))
 
 export const guestsRelations = relations(guests, ({ many }) => ({
@@ -473,4 +649,36 @@ export const commentsRelations = relations(comments, ({ one, many }) => ({
 export const commentVotesRelations = relations(commentVotes, ({ one }) => ({
   comment: one(comments, { fields: [commentVotes.commentId], references: [comments.id] }),
   user: one(users, { fields: [commentVotes.userId], references: [users.id] }),
+}))
+
+export const followsRelations = relations(follows, ({ one }) => ({
+  follower: one(users, {
+    fields: [follows.followerId],
+    references: [users.id],
+    relationName: "follows_follower",
+  }),
+  followee: one(users, {
+    fields: [follows.followeeId],
+    references: [users.id],
+    relationName: "follows_followee",
+  }),
+}))
+
+export const groupsRelations = relations(groups, ({ one, many }) => ({
+  createdBy: one(users, {
+    fields: [groups.createdByUserId],
+    references: [users.id],
+  }),
+  members: many(groupMembers),
+  messages: many(groupMessages),
+}))
+
+export const groupMembersRelations = relations(groupMembers, ({ one }) => ({
+  group: one(groups, { fields: [groupMembers.groupId], references: [groups.id] }),
+  user: one(users, { fields: [groupMembers.userId], references: [users.id] }),
+}))
+
+export const groupMessagesRelations = relations(groupMessages, ({ one }) => ({
+  group: one(groups, { fields: [groupMessages.groupId], references: [groups.id] }),
+  author: one(users, { fields: [groupMessages.authorUserId], references: [users.id] }),
 }))

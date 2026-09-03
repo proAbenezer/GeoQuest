@@ -6,6 +6,8 @@ import { db } from "../db/index.ts"
 import { comments, commentVotes, users, pins, places } from "../db/schema.ts"
 import { optionalAuth, requireAuth } from "../middleware/auth.ts"
 import { ensureGuestSession } from "../middleware/guest.ts"
+import { notify } from "../lib/notify.ts"
+import { canViewOwner } from "./community.ts"
 
 const router = Router()
 
@@ -157,6 +159,45 @@ function buildThread(flat: CommentDTO[]): CommentNode[] {
   return sortRecursive(roots)
 }
 
+// A registered viewer may read/comment/see content tied to a set of pins
+// (a pin target, a route's two endpoint pins, or a reply whose parent targets
+// either). Rule: your own pin, or a PUBLIC pin whose owner you're connected to
+// or follow. Guests never qualify (no social graph); private foreign pins and
+// stranger-owned public pins are both off-limits. Returns a friendly 403 copy.
+async function checkPinsViewable(
+  viewerId: string | undefined,
+  pinIds: Array<string | null | undefined>
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const ids = Array.from(new Set(pinIds.filter((id): id is string => Boolean(id))))
+  if (ids.length === 0) return { ok: true }
+  if (!viewerId) {
+    return { ok: false, error: "Sign in to see that" }
+  }
+  const rows = await db
+    .select({ id: pins.id, userId: pins.userId, visibility: pins.visibility })
+    .from(pins)
+    .where(inArray(pins.id, ids))
+  const byId = new Map(rows.map((r) => [r.id, r]))
+  for (const id of ids) {
+    const pin = byId.get(id)
+    if (!pin) return { ok: false, error: "Pin not found" }
+    if (pin.userId === viewerId) continue
+    if (
+      pin.userId &&
+      pin.visibility === "public" &&
+      (await canViewOwner(viewerId, pin.userId))
+    ) {
+      continue
+    }
+    return {
+      ok: false,
+      error:
+        "You can only comment on public pins of travelers you connect with or follow",
+    }
+  }
+  return { ok: true }
+}
+
 // Parses a target from query params for GET /comments.
 function targetWhereFromQuery(q: Record<string, string>): SQL {
   if (q.targetType === "pin") {
@@ -209,6 +250,17 @@ router.get("/", async (req, res) => {
       return res.status(400).json({ error: (err as Error).message })
     }
 
+    // Pin/route targets are visibility-gated: only the owner, a connection, or
+    // a follower of the pin owner(s) can read the thread. Location/place
+    // targets stay community-open. Non-viewers get an empty list (no leak).
+    const q = req.query as Record<string, string>
+    if (q.targetType === "pin" || q.targetType === "route") {
+      const pinIds =
+        q.targetType === "pin" ? [q.pinId] : [q.routeStartPinId, q.routeEndPinId]
+      const view = await checkPinsViewable(req.userId, pinIds)
+      if (!view.ok) return res.json({ comments: [] })
+    }
+
     const flat = await fetchComments(where, req.userId)
     res.json({ comments: buildThread(flat) })
   } catch (error) {
@@ -239,6 +291,17 @@ router.post("/", requireAuth, async (req, res) => {
       .where(eq(comments.id, parentId))
       .limit(1)
     if (!parent) return res.status(404).json({ error: "Parent comment not found" })
+
+    // A reply stands on the parent's target, so it obeys the same visibility
+    // rules — you can't reply under a private/foreign pin's thread you can't see.
+    if (parent.targetType === "pin" || parent.targetType === "route") {
+      const ids =
+        parent.targetType === "pin"
+          ? [parent.pinId]
+          : [parent.routeStartPinId, parent.routeEndPinId]
+      const view = await checkPinsViewable(userId, ids)
+      if (!view.ok) return res.status(403).json({ error: view.error })
+    }
 
     const [created] = await db
       .insert(comments)
@@ -284,6 +347,8 @@ router.post("/", requireAuth, async (req, res) => {
     if (!parsed.data.pinId) return res.status(400).json({ error: "pinId is required" })
     const pin = await db.query.pins.findFirst({ where: eq(pins.id, parsed.data.pinId) })
     if (!pin) return res.status(404).json({ error: "Pin not found" })
+    const view = await checkPinsViewable(userId, [pin.id])
+    if (!view.ok) return res.status(403).json({ error: view.error })
     pinId = pin.id
     latitude = pin.latitude
     longitude = pin.longitude
@@ -306,6 +371,10 @@ router.post("/", requireAuth, async (req, res) => {
       db.query.pins.findFirst({ where: eq(pins.id, parsed.data.routeEndPinId) }),
     ])
     if (!start || !end) return res.status(404).json({ error: "Route pin not found" })
+    // A route is only visible/commentable when BOTH endpoints are — your own
+    // pins, or public pins of someone you're connected to or follow.
+    const view = await checkPinsViewable(userId, [start.id, end.id])
+    if (!view.ok) return res.status(403).json({ error: view.error })
     routeStartPinId = start.id
     routeEndPinId = end.id
     latitude = (start.latitude + end.latitude) / 2
@@ -358,6 +427,16 @@ router.post("/:id/vote", requireAuth, async (req, res) => {
     .limit(1)
   if (!comment) return res.status(404).json({ error: "Comment not found" })
 
+  // Voting is part of reading a thread — same visibility rule as the listing.
+  if (comment.targetType === "pin" || comment.targetType === "route") {
+    const ids =
+      comment.targetType === "pin"
+        ? [comment.pinId]
+        : [comment.routeStartPinId, comment.routeEndPinId]
+    const view = await checkPinsViewable(req.userId, ids)
+    if (!view.ok) return res.status(403).json({ error: view.error })
+  }
+
   const { value } = parsed.data
   const userId = req.userId!
 
@@ -365,6 +444,7 @@ router.post("/:id/vote", requireAuth, async (req, res) => {
     where: and(eq(commentVotes.commentId, comment.id), eq(commentVotes.userId, userId)),
   })
 
+  let newlyVoted = false
   if (existing) {
     if (existing.value === value) {
       // Unvote.
@@ -375,6 +455,19 @@ router.post("/:id/vote", requireAuth, async (req, res) => {
     }
   } else {
     await db.insert(commentVotes).values({ commentId: comment.id, userId, value })
+    newlyVoted = true
+  }
+
+  // Toast the author when someone casts a FIRST vote on their comment — never
+  // on a vote removal, a direction flip, or a vote on their own comment.
+  if (newlyVoted && comment.authorUserId !== userId) {
+    await notify({
+      recipientUserId: comment.authorUserId,
+      actorUserId: userId,
+      type: "comment_vote",
+      refId: comment.id,
+      context: comment.body.slice(0, 200),
+    })
   }
 
   res.json(await getVoteState(comment.id, userId))

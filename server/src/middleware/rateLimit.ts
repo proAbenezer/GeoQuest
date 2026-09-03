@@ -4,8 +4,13 @@
 // One dispatcher picks a single limiter per request based on route+method so
 // rules never double-count (a request is counted once, against one tier):
 //   POST /auth/login | /auth/signup                 -> 10/min  (brute force)
+//   POST /uploads                                   -> 15/min  (image uploads — each buffers up
+//                                                                to 5MB in memory, billed to
+//                                                                Cloudinary)
 //   POST /community/conversations/:id/messages      -> 20/min  (message sends)
-//   POST /comments* | /places/unlock                -> 30/min  (comments/unlocks)
+//   POST /comments* | /places/unlock                -> 30/min  (comments/votes/unlocks)
+//   POST /pins | PATCH/DELETE /pins/:id |
+//     POST /categories                              -> 30/min  (content creation/edits)
 //   everything else                                 -> 120/min (general cap)
 //
 // The store is in-memory (the express-rate-limit default), which is correct for
@@ -34,25 +39,36 @@ function makeLimiter(limit: number) {
 }
 
 const authLimiter = makeLimiter(10)
+const uploadLimiter = makeLimiter(15)
 const messageLimiter = makeLimiter(20)
+const contentLimiter = makeLimiter(30)
 const writeLimiter = makeLimiter(30)
 const generalLimiter = makeLimiter(120)
 
-// Which tier does this request belong to? Returns one of the four limiters, or
-// null when the request should skip limiting entirely.
+// Which tier does this request belong to? Returns one of the limiters, or null
+// when the request should skip limiting entirely.
 function pickLimiter(req: Request) {
   const { method, path } = req
   if (method === "OPTIONS" || path === "/health") return null
 
   if (method === "POST") {
     if (path === "/auth/login" || path === "/auth/signup") return authLimiter
+    if (path === "/uploads") return uploadLimiter
     if (path.startsWith("/community/conversations/") && path.endsWith("/messages")) {
       return messageLimiter
     }
-    if (path === "/places/unlock" || path === "/comments" || path.startsWith("/comments/")) {
+    if (path === "/comments" || path.startsWith("/comments/") || path === "/places/unlock") {
       return writeLimiter
     }
+    if (path === "/categories") return contentLimiter
   }
+
+  // Creating, editing, or deleting a pin all write a row — treat them as content
+  // creation rather than letting them ride the general tier.
+  const isPinWrite =
+    (method === "POST" && path === "/pins") ||
+    ((method === "PATCH" || method === "DELETE") && path.startsWith("/pins/"))
+  if (isPinWrite) return contentLimiter
 
   return generalLimiter
 }

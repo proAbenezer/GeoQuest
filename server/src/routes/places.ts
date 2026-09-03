@@ -1,9 +1,9 @@
 // src/routes/places.ts
 import { Router } from "express"
 import { z } from "zod"
-import { eq, and, isNull, sql, inArray } from "drizzle-orm"
+import { eq, and, isNull, sql, inArray, gt } from "drizzle-orm"
 import { db } from "../db/index.js"
-import { places, countryFetchStatus, unlockedPlaces, placeExploration, travelStats } from "../db/schema.js"
+import { places, countryFetchStatus, unlockedPlaces, placeExploration, travelStats, connections, notifications } from "../db/schema.js"
 import { optionalAuth } from "../middleware/auth.js"
 import { ensureGuestSession } from "../middleware/guest.js" // match your actual filename
 import { fetchCountryBoundaries } from "../services/fetchCountryBoundaries.js"
@@ -386,6 +386,58 @@ const unlockSchema = z.object({
   timezoneOffsetMinutes: z.number().int().min(-840).max(840).optional().default(0),
 })
 
+// Notify each of the unlocker's accepted connections that they unlocked a place
+// — coalesced to at most one per connection per 15 minutes, because GPS
+// auto-unlock can legitimately fire several times within a few minutes and
+// spamming the same "X unlocked Y" toast is noise. Always best-effort.
+async function notifyConnectionsOfUnlock(
+  actorUserId: string,
+  placeName: string,
+  placeId: string
+): Promise<void> {
+  try {
+    const friends = await db
+      .select({ id: connections.followeeId })
+      .from(connections)
+      .where(
+        and(
+          eq(connections.followerId, actorUserId),
+          eq(connections.status, "accepted")
+        )
+      )
+    if (friends.length === 0) return
+    const friendIds = friends.map((f) => f.id)
+
+    const since = new Date(Date.now() - 15 * 60 * 1000)
+    const recent = await db
+      .select({ recipientUserId: notifications.recipientUserId })
+      .from(notifications)
+      .where(
+        and(
+          eq(notifications.actorUserId, actorUserId),
+          eq(notifications.type, "place_unlock"),
+          inArray(notifications.recipientUserId, friendIds),
+          gt(notifications.createdAt, since)
+        )
+      )
+    const already = new Set(recent.map((r) => r.recipientUserId))
+    const recipients = friendIds.filter((id) => !already.has(id))
+    if (recipients.length === 0) return
+
+    await db.insert(notifications).values(
+      recipients.map((recipientUserId) => ({
+        recipientUserId,
+        actorUserId,
+        type: "place_unlock" as const,
+        refId: placeId,
+        context: placeName,
+      }))
+    )
+  } catch (err) {
+    console.error("Failed to notify connections of unlock:", err)
+  }
+}
+
 router.post("/unlock", async (req, res) => {
   const parsed = unlockSchema.safeParse(req.body)
   if (!parsed.success) {
@@ -394,7 +446,7 @@ router.post("/unlock", async (req, res) => {
   const { placeId, latitude, longitude, timezoneOffsetMinutes } = parsed.data
 
   const [target] = await db
-    .select({ id: places.id })
+    .select({ id: places.id, name: places.name })
     .from(places)
     .where(eq(places.id, placeId))
 
@@ -458,6 +510,12 @@ router.post("/unlock", async (req, res) => {
     await updateTravelStats(placeId, alreadyUnlocked, timezoneOffsetMinutes, owner)
   } catch (err) {
     console.error("Failed to update travel stats after unlock:", err)
+  }
+
+  // Tell my accepted connections I unlocked this place (in-app popup). Registered
+  // users only — guests have no connection graph. Coalesced per 15 min.
+  if (req.userId && !alreadyUnlocked) {
+    await notifyConnectionsOfUnlock(req.userId, target.name, placeId)
   }
 })
 
